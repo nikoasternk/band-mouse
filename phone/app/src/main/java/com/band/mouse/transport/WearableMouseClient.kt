@@ -9,6 +9,7 @@ import com.xiaomi.xms.wearable.node.Node
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -16,52 +17,45 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import org.json.JSONTokener
 
-class WearableMouseClient(context: Context, private val scope: CoroutineScope) {
-    private val nodeApi = Wearable.getNodeApi(context)
-    private val authApi = Wearable.getAuthApi(context)
-    private val messageApi = Wearable.getMessageApi(context)
+class WearableMouseClient(context: Context, unusedScope: CoroutineScope) {
+    private val appContext = context.applicationContext
+    private val clientScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val nodeApi = Wearable.getNodeApi(appContext)
+    private val authApi = Wearable.getAuthApi(appContext)
+    private val messageApi = Wearable.getMessageApi(appContext)
     private var activeNode: Node? = null
     private var handshakeDeferred: CompletableDeferred<Boolean>? = null
 
     private val messageListener = OnMessageReceivedListener { _, bytes ->
         try {
             var text = bytes.decodeToString().trim()
-            if (text.startsWith("\"") && text.endsWith("\"")) {
+            while (text.startsWith("\"") && text.endsWith("\"")) {
                 text = JSONTokener(text).nextValue().toString()
             }
 
-            when {
-                text.startsWith("m:") -> {
-                    val parts = text.substring(2).split(",")
-                    if (parts.size == 2) {
-                        val dx = parts[0].toIntOrNull() ?: 0
-                        val dy = parts[1].toIntOrNull() ?: 0
-                        MouseAccessibilityService.instance?.moveCursor(dx, dy)
+            val packet = JSONObject(text)
+            when (packet.optString("tag")) {
+                "mouse" -> {
+                    when (packet.optString("act")) {
+                        "m" -> {
+                            val dx = packet.optInt("dx", 0)
+                            val dy = packet.optInt("dy", 0)
+                            MouseAccessibilityService.instance?.moveCursor(dx, dy)
+                        }
+                        "tap" -> {
+                            MouseAccessibilityService.instance?.performClick()
+                        }
+                        "back" -> {
+                            MouseAccessibilityService.instance?.performBack()
+                        }
+                        "s" -> {
+                            val dx = packet.optInt("dx", 0)
+                            val dy = packet.optInt("dy", 0)
+                            MouseAccessibilityService.instance?.performScroll(dx, dy)
+                        }
                     }
-                    return@OnMessageReceivedListener
                 }
-                text == "c:tap" -> {
-                    MouseAccessibilityService.instance?.performClick()
-                    return@OnMessageReceivedListener
-                }
-                text == "c:back" -> {
-                    MouseAccessibilityService.instance?.performBack()
-                    return@OnMessageReceivedListener
-                }
-                text.startsWith("s:") -> {
-                    val parts = text.substring(2).split(",")
-                    if (parts.size == 2) {
-                        val dx = parts[0].toIntOrNull() ?: 0
-                        val dy = parts[1].toIntOrNull() ?: 0
-                        MouseAccessibilityService.instance?.performScroll(dx, dy)
-                    }
-                    return@OnMessageReceivedListener
-                }
-            }
-
-            if (text.startsWith("{")) {
-                val packet = JSONObject(text)
-                if (packet.optString("tag") == "handshake") {
+                "handshake" -> {
                     val step = packet.optInt("step", 0)
                     if (step > 0) {
                         handshakeDeferred?.complete(true)
@@ -142,7 +136,7 @@ class WearableMouseClient(context: Context, private val scope: CoroutineScope) {
         onConnected: (String) -> Unit,
         onError: () -> Unit
     ) {
-        scope.launch(Dispatchers.IO) {
+        clientScope.launch {
             val connection = queryConnectedBand()
             if (connection.isFailure || activeNode == null) {
                 withContext(Dispatchers.Main) { onError() }
@@ -158,19 +152,27 @@ class WearableMouseClient(context: Context, private val scope: CoroutineScope) {
             }
 
             launchTouchpadPage(nodeId)
-            delay(700)
+            delay(800)
 
             handshakeDeferred = CompletableDeferred()
             val handshakeInit = JSONObject().put("tag", "handshake").put("step", 0).toString()
 
-            for (attempt in 1..6) {
+            var connected = false
+            for (attempt in 1..10) {
                 sendPacket(nodeId, handshakeInit)
-                val ack = withTimeoutOrNull(600) { handshakeDeferred?.await() }
-                if (ack == true) break
+                val ack = withTimeoutOrNull(650) { handshakeDeferred?.await() }
+                if (ack == true) {
+                    connected = true
+                    break
+                }
             }
 
             withContext(Dispatchers.Main) {
-                onConnected(bandName)
+                if (connected) {
+                    onConnected(bandName)
+                } else {
+                    onError()
+                }
             }
         }
     }
