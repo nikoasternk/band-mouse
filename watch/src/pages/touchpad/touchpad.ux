@@ -11,16 +11,14 @@
       </div>
     </div>
 
-    <div class="touchpad-box">
-      <text class="status-title">{{isConnected ? strings.connected : strings.ready}}</text>
-      <text class="status-sub">{{isScrollMode ? strings.hintScroll : strings.hintCursor}}</text>
+    <text class="status-line">{{debugText}}</text>
 
-      <div
-        class="touch-hitbox"
-        @touchstart="onTouchStart"
-        @touchmove="onTouchMove"
-        @touchend="onTouchEnd">
-      </div>
+    <!-- Чистая зона тачпада без вложенных элементов -->
+    <div
+      class="touchpad-box"
+      @touchstart="onTouchStart"
+      @touchmove="onTouchMove"
+      @touchend="onTouchEnd">
     </div>
 
     <div class="{{isScrollMode ? 'mode-btn mode-scroll' : 'mode-btn mode-cursor'}}" @click="toggleMode">
@@ -42,6 +40,7 @@ export default {
     isConnected: false,
     isScrollMode: false,
     allowExit: false,
+    debugText: 'Тачпад',
     lastX: 0,
     lastY: 0,
     startTime: 0,
@@ -54,10 +53,13 @@ export default {
 
   onInit() {
     this.strings = getStrings();
+    this.debugText = this.strings.ready;
+
     if (globalThis.wearableBridge) {
       this.statusSub = globalThis.wearableBridge.addStatusListener((status) => {
         if (status === 'connected') {
           this.isConnected = true;
+          this.debugText = this.strings.connected;
           this.shortVibrate();
         }
       });
@@ -71,11 +73,15 @@ export default {
         this.bucketY = 0;
 
         if ((dx !== 0 || dy !== 0) && globalThis.wearableBridge) {
-          const prefix = this.isScrollMode ? 's:' : 'm:';
-          globalThis.wearableBridge.sendRaw(prefix + dx + ',' + dy);
+          globalThis.wearableBridge.sendPacket({
+            tag: 'mouse',
+            act: this.isScrollMode ? 's' : 'm',
+            dx: dx,
+            dy: dy
+          });
         }
       }
-    }, 35);
+    }, 40);
   },
 
   onShow() {
@@ -115,8 +121,8 @@ export default {
       : (e && e.changedTouches ? e.changedTouches : null);
     if (!list || list.length === 0) return null;
     const pt = list[0];
-    const x = pt.clientX !== undefined ? pt.clientX : (pt.pageX !== undefined ? pt.pageX : pt.offsetX);
-    const y = pt.clientY !== undefined ? pt.clientY : (pt.pageY !== undefined ? pt.pageY : pt.offsetY);
+    const x = pt.pageX !== undefined ? pt.pageX : (pt.clientX !== undefined ? pt.clientX : pt.offsetX);
+    const y = pt.pageY !== undefined ? pt.pageY : (pt.clientY !== undefined ? pt.clientY : pt.offsetY);
     if (x === undefined || y === undefined) return null;
     return { x, y };
   },
@@ -142,27 +148,38 @@ export default {
     this.totalMoved += Math.abs(dx) + Math.abs(dy);
     this.bucketX += dx;
     this.bucketY += dy;
+
+    this.debugText = 'X:' + Math.round(pt.x) + ' Y:' + Math.round(pt.y);
   },
 
   onTouchEnd() {
     const elapsed = Date.now() - this.startTime;
-    if (elapsed < 220 && this.totalMoved < 12) {
+    if (elapsed < 240 && this.totalMoved < 14) {
       this.shortVibrate();
+      this.debugText = 'КЛИК (Tap)';
       if (globalThis.wearableBridge) {
-        globalThis.wearableBridge.sendRaw('c:tap');
+        globalThis.wearableBridge.sendPacket({
+          tag: 'mouse',
+          act: 'tap'
+        });
       }
     }
   },
 
   toggleMode() {
     this.isScrollMode = !this.isScrollMode;
+    this.debugText = this.isScrollMode ? this.strings.hintScroll : this.strings.hintCursor;
     this.shortVibrate();
   },
 
   sendAndroidBack() {
     this.shortVibrate();
+    this.debugText = '◄ Назад';
     if (globalThis.wearableBridge) {
-      globalThis.wearableBridge.sendRaw('c:back');
+      globalThis.wearableBridge.sendPacket({
+        tag: 'mouse',
+        act: 'back'
+      });
     }
   },
 
@@ -190,95 +207,78 @@ export default {
 
 .top-spacer {
   width: 200px;
-  height: 26px;
+  height: 22px;
   flex-shrink: 0;
 }
 
 .top-row {
   width: 196px;
-  height: 52px;
+  height: 48px;
   flex-shrink: 0;
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 .back-btn {
   width: 132px;
-  height: 52px;
+  height: 48px;
   background-color: #262626;
-  border-radius: 24px;
+  border-radius: 22px;
   justify-content: center;
   align-items: center;
 }
 
 .back-txt {
   color: #FFFFFF;
-  font-size: 20px;
+  font-size: 19px;
   font-weight: bold;
 }
 
 .exit-btn {
   width: 54px;
-  height: 52px;
+  height: 48px;
   background-color: #381A1A;
-  border-radius: 24px;
+  border-radius: 22px;
   justify-content: center;
   align-items: center;
 }
 
 .exit-txt {
   color: #FF6B6B;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: bold;
 }
 
-.touchpad-box {
-  position: relative;
+.status-line {
   width: 196px;
-  height: 328px;
+  height: 28px;
+  flex-shrink: 0;
+  color: #AAAAAA;
+  font-size: 18px;
+  font-weight: bold;
+  text-align: center;
+  lines: 1;
+  margin-bottom: 4px;
+}
+
+.touchpad-box {
+  width: 196px;
+  height: 316px;
   flex-shrink: 0;
   background-color: #161616;
   border-width: 2px;
   border-color: #333333;
   border-radius: 32px;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
   margin-bottom: 8px;
-}
-
-.status-title {
-  width: 176px;
-  color: #FFFFFF;
-  font-size: 24px;
-  font-weight: bold;
-  text-align: center;
-}
-
-.status-sub {
-  width: 176px;
-  color: #888888;
-  font-size: 17px;
-  font-weight: bold;
-  margin-top: 8px;
-  text-align: center;
-}
-
-.touch-hitbox {
-  position: absolute;
-  top: 0px;
-  left: 0px;
-  width: 196px;
-  height: 328px;
 }
 
 .mode-btn {
   width: 196px;
-  height: 62px;
+  height: 58px;
   flex-shrink: 0;
-  border-radius: 28px;
+  border-radius: 26px;
   justify-content: center;
   align-items: center;
 }
@@ -305,7 +305,7 @@ export default {
 
 .bottom-spacer {
   width: 200px;
-  height: 36px;
+  height: 32px;
   flex-shrink: 0;
 }
 </style>
