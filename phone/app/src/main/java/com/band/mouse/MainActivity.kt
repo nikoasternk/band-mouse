@@ -28,6 +28,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
@@ -47,7 +48,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.lifecycleScope
 import com.band.mouse.service.MouseAccessibilityService
 import com.band.mouse.transport.WearableMouseClient
 import java.util.Locale
@@ -57,9 +57,10 @@ class MainActivity : ComponentActivity() {
     private lateinit var mouseClient: WearableMouseClient
     private var connectedBandName by mutableStateOf<String?>(null)
     private var isCheckingConnection by mutableStateOf(true)
-    private var isAccessibilityEnabled by mutableStateOf(false)
-    private var sensitivity by mutableFloatStateOf(2.8f)
-    private var scrollSpeed by mutableFloatStateOf(6.0f)
+    private var isAccessibilityGranted by mutableStateOf(false)
+    private var isMasterServiceEnabled by mutableStateOf(true)
+    private var sensitivity by mutableFloatStateOf(3.0f)
+    private var scrollSpeed by mutableFloatStateOf(8.0f)
     private var languageMode by mutableStateOf("auto")
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -68,12 +69,15 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences("bandmouse_prefs", Context.MODE_PRIVATE)
         languageMode = prefs.getString("lang_mode", "auto") ?: "auto"
-        sensitivity = prefs.getFloat("sensitivity", 2.8f)
-        scrollSpeed = prefs.getFloat("scroll_mult", 6.0f)
+        sensitivity = prefs.getFloat("sensitivity", 3.0f)
+        scrollSpeed = prefs.getFloat("scroll_mult", 8.0f)
+        isMasterServiceEnabled = prefs.getBoolean("master_enabled", true)
+
         MouseAccessibilityService.cursorSensitivity = sensitivity
         MouseAccessibilityService.scrollMultiplier = scrollSpeed
+        MouseAccessibilityService.isServiceMasterEnabled = isMasterServiceEnabled
 
-        mouseClient = WearableMouseClient(this, lifecycleScope)
+        mouseClient = WearableMouseClient.getInstance(this)
         startWatchSession()
 
         setContent {
@@ -109,9 +113,16 @@ class MainActivity : ComponentActivity() {
                         MouseControlScreen(
                             modifier = Modifier.padding(innerPadding),
                             bandStatus = bandStatusText,
-                            isServiceActive = isAccessibilityEnabled,
+                            isAccessibilityGranted = isAccessibilityGranted,
+                            isMasterEnabled = isMasterServiceEnabled,
                             sensitivity = sensitivity,
                             scrollSpeed = scrollSpeed,
+                            onMasterToggle = { enabled ->
+                                isMasterServiceEnabled = enabled
+                                prefs.edit().putBoolean("master_enabled", enabled).apply()
+                                MouseAccessibilityService.instance?.setMasterEnabled(enabled)
+                                MouseAccessibilityService.isServiceMasterEnabled = enabled
+                            },
                             onConnectWatch = { startWatchSession() },
                             onOpenAccessibility = {
                                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -125,6 +136,16 @@ class MainActivity : ComponentActivity() {
                                 scrollSpeed = value
                                 MouseAccessibilityService.scrollMultiplier = value
                                 prefs.edit().putFloat("scroll_mult", value).apply()
+                            },
+                            onResetSpeeds = {
+                                sensitivity = 3.0f
+                                scrollSpeed = 8.0f
+                                MouseAccessibilityService.cursorSensitivity = 3.0f
+                                MouseAccessibilityService.scrollMultiplier = 8.0f
+                                prefs.edit()
+                                    .putFloat("sensitivity", 3.0f)
+                                    .putFloat("scroll_mult", 8.0f)
+                                    .apply()
                             }
                         )
                     }
@@ -135,7 +156,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        isAccessibilityEnabled = MouseAccessibilityService.instance != null
+        isAccessibilityGranted = MouseAccessibilityService.instance != null
+        mouseClient.ensureListening()
     }
 
     private fun startWatchSession() {
@@ -188,19 +210,22 @@ fun BandMouseTheme(
 fun MouseControlScreen(
     modifier: Modifier = Modifier,
     bandStatus: String,
-    isServiceActive: Boolean,
+    isAccessibilityGranted: Boolean,
+    isMasterEnabled: Boolean,
     sensitivity: Float,
     scrollSpeed: Float,
+    onMasterToggle: (Boolean) -> Unit,
     onConnectWatch: () -> Unit,
     onOpenAccessibility: () -> Unit,
     onSensitivityChange: (Float) -> Unit,
-    onScrollSpeedChange: (Float) -> Unit
+    onScrollSpeedChange: (Float) -> Unit,
+    onResetSpeeds: () -> Unit
 ) {
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Card(
             shape = RoundedCornerShape(20.dp),
@@ -210,14 +235,28 @@ fun MouseControlScreen(
                 modifier = Modifier
                     .padding(16.dp)
                     .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(stringResource(R.string.service_title), style = MaterialTheme.typography.labelMedium)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.master_switch_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.master_switch_sub), style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(
+                        checked = isMasterEnabled,
+                        onCheckedChange = onMasterToggle
+                    )
+                }
+
                 Text(
-                    text = if (isServiceActive) stringResource(R.string.service_on) else stringResource(R.string.service_off),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
+                    text = if (isAccessibilityGranted) stringResource(R.string.service_on) else stringResource(R.string.service_off),
+                    style = MaterialTheme.typography.labelLarge
                 )
+
                 FilledTonalButton(
                     onClick = onOpenAccessibility,
                     modifier = Modifier.fillMaxWidth()
@@ -231,28 +270,23 @@ fun MouseControlScreen(
             shape = RoundedCornerShape(20.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Row(
+            Column(
                 modifier = Modifier
                     .padding(16.dp)
                     .fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.device_status), style = MaterialTheme.typography.labelMedium)
-                    Text(bandStatus, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.device_status), style = MaterialTheme.typography.labelMedium)
+                Text(bandStatus, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Button(
+                    onClick = onConnectWatch,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                ) {
+                    Text(stringResource(R.string.btn_launch_watch))
                 }
-            }
-            Button(
-                onClick = onConnectWatch,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp)
-                    .fillMaxWidth()
-                    .height(48.dp)
-            ) {
-                Text(stringResource(R.string.btn_launch_watch))
             }
         }
 
@@ -264,7 +298,7 @@ fun MouseControlScreen(
                 modifier = Modifier
                     .padding(16.dp)
                     .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
                     text = stringResource(R.string.label_sensitivity, String.format(Locale.US, "%.1f", sensitivity)),
@@ -287,8 +321,15 @@ fun MouseControlScreen(
                 Slider(
                     value = scrollSpeed,
                     onValueChange = onScrollSpeedChange,
-                    valueRange = 1.5f..12.0f
+                    valueRange = 1.5f..14.0f
                 )
+
+                TextButton(
+                    onClick = onResetSpeeds,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(stringResource(R.string.btn_reset_speeds))
+                }
             }
         }
     }
