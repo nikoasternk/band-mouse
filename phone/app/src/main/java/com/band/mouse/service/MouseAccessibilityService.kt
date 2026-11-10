@@ -11,12 +11,16 @@ import android.graphics.Path
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
+import android.view.Choreographer
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import com.band.mouse.transport.WearableMouseClient
+import kotlin.math.abs
 import kotlin.math.hypot
+import kotlin.math.roundToInt
 
 class MouseAccessibilityService : AccessibilityService() {
 
@@ -50,12 +54,55 @@ class MouseAccessibilityService : AccessibilityService() {
 
     private var cursorX = 500f
     private var cursorY = 1000f
+    private var targetX = 500f
+    private var targetY = 1000f
+    private var isAnimatingCursor = false
+
     private var screenWidth = 1080
     private var screenHeight = 2400
 
+    private var savedBrightnessMode: Int = Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
+    private var savedBrightnessValue: Int = 128
+    private var isBrightnessOverridden: Boolean = false
+
     private val watchTimeoutRunnable = Runnable {
         isWatchAppOpen = false
+        setStealthState(false)
         updateOverlayVisibility()
+    }
+
+    private val frameCallback = object : Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            val view = cursorView
+            val wm = windowManager
+            if (view == null || wm == null || !isServiceMasterEnabled || !isWatchAppOpen) {
+                isAnimatingCursor = false
+                return
+            }
+
+            val diffX = targetX - cursorX
+            val diffY = targetY - cursorY
+
+            if (abs(diffX) < 0.4f && abs(diffY) < 0.4f) {
+                cursorX = targetX
+                cursorY = targetY
+                isAnimatingCursor = false
+            } else {
+                cursorX += diffX * 0.55f
+                cursorY += diffY * 0.55f
+                Choreographer.getInstance().postFrameCallback(this)
+            }
+
+            val newX = cursorX.roundToInt() + 2
+            val newY = cursorY.roundToInt() + 2
+            if (cursorParams.x != newX || cursorParams.y != newY) {
+                cursorParams.x = newX
+                cursorParams.y = newY
+                try {
+                    wm.updateViewLayout(view, cursorParams)
+                } catch (_: Exception) {}
+            }
+        }
     }
 
     override fun onServiceConnected() {
@@ -70,12 +117,14 @@ class MouseAccessibilityService : AccessibilityService() {
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
+        setStealthState(false)
         removeOverlays()
         instance = null
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
+        setStealthState(false)
         removeOverlays()
         instance = null
         super.onDestroy()
@@ -96,6 +145,8 @@ class MouseAccessibilityService : AccessibilityService() {
             screenHeight = metrics.heightPixels
             cursorX = screenWidth / 2f
             cursorY = screenHeight / 2f
+            targetX = cursorX
+            targetY = cursorY
 
             cursorView = object : View(this) {
                 private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -138,8 +189,8 @@ class MouseAccessibilityService : AccessibilityService() {
                 PixelFormat.TRANSLUCENT
             ).apply {
                 gravity = Gravity.TOP or Gravity.START
-                x = cursorX.toInt() + 2
-                y = cursorY.toInt() + 2
+                x = cursorX.roundToInt() + 2
+                y = cursorY.roundToInt() + 2
             }
 
             stealthView = View(this).apply {
@@ -160,6 +211,7 @@ class MouseAccessibilityService : AccessibilityService() {
                 gravity = Gravity.TOP or Gravity.START
                 x = -200
                 y = -400
+                screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
             }
 
             try {
@@ -174,6 +226,8 @@ class MouseAccessibilityService : AccessibilityService() {
     private fun removeOverlays() {
         mainHandler.removeCallbacks(watchTimeoutRunnable)
         mainHandler.post {
+            isAnimatingCursor = false
+            Choreographer.getInstance().removeFrameCallback(frameCallback)
             cursorView?.let {
                 try { windowManager?.removeView(it) } catch (_: Exception) {}
             }
@@ -185,10 +239,68 @@ class MouseAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun applyStealthBrightness(enableStealth: Boolean) {
+        try {
+            if (enableStealth) {
+                if (!isBrightnessOverridden && Settings.System.canWrite(this)) {
+                    savedBrightnessMode = Settings.System.getInt(
+                        contentResolver,
+                        Settings.System.SCREEN_BRIGHTNESS_MODE,
+                        Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
+                    )
+                    savedBrightnessValue = Settings.System.getInt(
+                        contentResolver,
+                        Settings.System.SCREEN_BRIGHTNESS,
+                        128
+                    )
+                    Settings.System.putInt(
+                        contentResolver,
+                        Settings.System.SCREEN_BRIGHTNESS_MODE,
+                        Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+                    )
+                    Settings.System.putInt(
+                        contentResolver,
+                        Settings.System.SCREEN_BRIGHTNESS,
+                        0
+                    )
+                    isBrightnessOverridden = true
+                }
+                if (::stealthParams.isInitialized) {
+                    stealthParams.screenBrightness = 0.0f
+                    stealthView?.let { try { windowManager?.updateViewLayout(it, stealthParams) } catch (_: Exception) {} }
+                }
+            } else {
+                if (isBrightnessOverridden && Settings.System.canWrite(this)) {
+                    Settings.System.putInt(
+                        contentResolver,
+                        Settings.System.SCREEN_BRIGHTNESS,
+                        savedBrightnessValue
+                    )
+                    Settings.System.putInt(
+                        contentResolver,
+                        Settings.System.SCREEN_BRIGHTNESS_MODE,
+                        savedBrightnessMode
+                    )
+                    isBrightnessOverridden = false
+                }
+                if (::stealthParams.isInitialized) {
+                    stealthParams.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                    stealthView?.let { try { windowManager?.updateViewLayout(it, stealthParams) } catch (_: Exception) {} }
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun setStealthState(active: Boolean) {
+        if (isStealthActive == active && (!active || isBrightnessOverridden)) return
+        isStealthActive = active
+        applyStealthBrightness(active)
+    }
+
     fun setMasterEnabled(enabled: Boolean) {
         isServiceMasterEnabled = enabled
         if (!enabled) {
-            isStealthActive = false
+            setStealthState(false)
         } else {
             WearableMouseClient.getInstance(applicationContext).ensureListening()
         }
@@ -202,7 +314,7 @@ class MouseAccessibilityService : AccessibilityService() {
             if (open) {
                 mainHandler.postDelayed(watchTimeoutRunnable, 5000L)
             } else {
-                isStealthActive = false
+                setStealthState(false)
             }
             updateOverlayVisibility()
         }
@@ -222,7 +334,7 @@ class MouseAccessibilityService : AccessibilityService() {
     fun toggleStealthMode() {
         if (!isServiceMasterEnabled) return
         mainHandler.post {
-            isStealthActive = !isStealthActive
+            setStealthState(!isStealthActive)
             updateOverlayVisibility()
         }
     }
@@ -239,26 +351,18 @@ class MouseAccessibilityService : AccessibilityService() {
         if (!isServiceMasterEnabled) return
         onWatchHeartbeat()
         mainHandler.post {
-            val view = cursorView ?: return@post
-            val wm = windowManager ?: return@post
-
-            val speed = hypot(dx.toFloat(), dy.toFloat())
-            val accel = (1.0f + (speed / 28f)).coerceAtMost(2.5f)
-            val mult = cursorSensitivity * accel
-
             val metrics = resources.displayMetrics
             screenWidth = metrics.widthPixels
             screenHeight = metrics.heightPixels
 
-            cursorX = (cursorX + dx * mult).coerceIn(0f, (screenWidth - 1).toFloat())
-            cursorY = (cursorY + dy * mult).coerceIn(0f, (screenHeight - 1).toFloat())
+            val mult = cursorSensitivity
+            targetX = (targetX + dx * mult).coerceIn(0f, (screenWidth - 1).toFloat())
+            targetY = (targetY + dy * mult).coerceIn(0f, (screenHeight - 1).toFloat())
 
-            cursorParams.x = cursorX.toInt() + 2
-            cursorParams.y = cursorY.toInt() + 2
-
-            try {
-                wm.updateViewLayout(view, cursorParams)
-            } catch (_: Exception) {}
+            if (!isAnimatingCursor) {
+                isAnimatingCursor = true
+                Choreographer.getInstance().postFrameCallback(frameCallback)
+            }
         }
     }
 
@@ -266,8 +370,10 @@ class MouseAccessibilityService : AccessibilityService() {
         if (!isServiceMasterEnabled) return
         onWatchHeartbeat()
         mainHandler.post {
+            cursorX = targetX
+            cursorY = targetY
             val path = Path().apply {
-                moveTo(cursorX, cursorY)
+                moveTo(targetX, targetY)
             }
             val stroke = GestureDescription.StrokeDescription(path, 0, 45)
             val gesture = GestureDescription.Builder().addStroke(stroke).build()
@@ -279,8 +385,8 @@ class MouseAccessibilityService : AccessibilityService() {
         if (!isServiceMasterEnabled) return
         onWatchHeartbeat()
         mainHandler.post {
-            val startX = cursorX.coerceIn(100f, (screenWidth - 100).toFloat())
-            val startY = cursorY.coerceIn(200f, (screenHeight - 200).toFloat())
+            val startX = targetX.coerceIn(100f, (screenWidth - 100).toFloat())
+            val startY = targetY.coerceIn(200f, (screenHeight - 200).toFloat())
             val endX = (startX + dx * scrollMultiplier).coerceIn(50f, (screenWidth - 50).toFloat())
             val endY = (startY + dy * scrollMultiplier).coerceIn(100f, (screenHeight - 100).toFloat())
 
