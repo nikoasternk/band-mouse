@@ -10,6 +10,9 @@
     <string name="service_on">Accessibility Permission: Granted ✓</string>
     <string name="service_off">Accessibility Permission: Disabled (Enable Band Mouse)</string>
     <string name="btn_open_accessibility">Accessibility Settings</string>
+    <string name="brightness_perm_on">Stealth Brightness Control: Granted ✓</string>
+    <string name="brightness_perm_off">Stealth Brightness Control: Grant Modify System Settings</string>
+    <string name="btn_open_write_settings">Grant Brightness Permission</string>
     <string name="btn_launch_watch">Connect &amp; Open Touchpad on Watch</string>
     <string name="label_sensitivity">Cursor Speed: %1$sx</string>
     <string name="label_scroll_speed">Scroll Speed: %1$sx</string>
