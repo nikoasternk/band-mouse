@@ -32,10 +32,11 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
-      - name: Sync App Icon to Android
+      - name: Render Watch Icon from Vector SVG
         run: |
-          mkdir -p phone/app/src/main/res/drawable
-          cp watch/src/common/logo.png phone/app/src/main/res/drawable/ic_launcher.png
+          sudo apt-get update && sudo apt-get install -y librsvg2-bin
+          mkdir -p watch/src/common
+          rsvg-convert -w 192 -h 192 watch/src/common/icon.svg -o watch/src/common/logo.png
 
       - name: Prepare Persistent Unified Signing Keys
         run: |
