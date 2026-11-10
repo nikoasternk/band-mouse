@@ -1,16 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Band Mouse</string>
+    <string name="master_switch_title">Active Mouse Service</string>
+    <string name="master_switch_sub">Cursor appears automatically when watch app is open</string>
     <string name="device_status">Watch Connection</string>
     <string name="status_checking">Connecting to watch...</string>
     <string name="status_connected">Connected: %1$s</string>
     <string name="status_disconnected">Disconnected (open Mi Fitness)</string>
-    <string name="service_title">Cursor Overlay Service</string>
-    <string name="service_on">Active (Cursor on screen)</string>
-    <string name="service_off">Disabled (Enable in Accessibility)</string>
-    <string name="btn_open_accessibility">Open Accessibility Settings</string>
+    <string name="service_on">Accessibility Permission: Granted ✓</string>
+    <string name="service_off">Accessibility Permission: Disabled (Enable Band Mouse)</string>
+    <string name="btn_open_accessibility">Accessibility Settings</string>
     <string name="btn_launch_watch">Connect &amp; Open Touchpad on Watch</string>
     <string name="label_sensitivity">Cursor Speed: %1$sx</string>
     <string name="label_scroll_speed">Scroll Speed: %1$sx</string>
+    <string name="btn_reset_speeds">Reset Defaults (3x / 8x)</string>
     <string name="toast_ready">Touchpad active on Band 10!</string>
 </resources>
