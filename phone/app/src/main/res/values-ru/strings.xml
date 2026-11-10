@@ -10,6 +10,9 @@
     <string name="service_on">Спецвозможности: Разрешение выдано ✓</string>
     <string name="service_off">Спецвозможности: Выключены (Включите Band Mouse)</string>
     <string name="btn_open_accessibility">Настройки Спецвозможностей</string>
+    <string name="brightness_perm_on">Управление яркостью скрытности: Выдано ✓</string>
+    <string name="brightness_perm_off">Для мин. яркости в скрытности выдайте доступ:</string>
+    <string name="btn_open_write_settings">Разрешить изменение настроек</string>
     <string name="btn_launch_watch">Подключить и открыть тачпад</string>
     <string name="label_sensitivity">Скорость курсора: %1$sx</string>
     <string name="label_scroll_speed">Скорость скролла: %1$sx</string>
