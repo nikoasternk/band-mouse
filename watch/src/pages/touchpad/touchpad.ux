@@ -1,6 +1,5 @@
 <template>
   <div class="pad-screen">
-    <!-- Весь экран 212x520 работает как единый тачпад -->
     <div
       class="full-touchpad"
       @touchstart="onTouchStart"
@@ -9,7 +8,6 @@
       @touchcancel="onTouchCancel">
     </div>
 
-    <!-- Кнопка выхода в меню (динамический размер из настроек) -->
     <div
       class="top-menu-btn"
       style="top: 12px; left: {{menuLeft}}px; width: {{menuW}}px; height: {{menuH}}px; border-radius: {{menuRadius}}px;"
@@ -17,7 +15,6 @@
       <text class="top-menu-txt" style="font-size: {{menuFont}}px;">{{strings.menuTopBtn}}</text>
     </div>
 
-    <!-- 3 кнопки панели телефона (динамический размер и мягкая вибрация) -->
     <div
       class="phone-nav-bar"
       if="{{showNavBar}}"
@@ -57,6 +54,7 @@ export default {
     strings: getStrings('auto'),
     controlMode: 'cursor',
     activeGestureMode: 'cursor',
+    hybridPending: false,
     tapLockPx: 4,
     hybridHoldMs: 400,
     showNavBar: true,
@@ -84,6 +82,7 @@ export default {
     isMoveUnlocked: false,
     bucketX: 0,
     bucketY: 0,
+    scrollTickCounter: 0,
     flushTimer: null,
     hybridHoldTimer: null,
     squareHoldTimer: null,
@@ -92,19 +91,42 @@ export default {
 
   onInit() {
     this.flushTimer = setInterval(() => {
-      if (this.bucketX !== 0 || this.bucketY !== 0) {
+      if (this.bucketX === 0 && this.bucketY === 0) return;
+
+      if (this.activeGestureMode === 'scroll') {
+        this.scrollTickCounter += 1;
+        const absX = Math.abs(this.bucketX);
+        const absY = Math.abs(this.bucketY);
+        if (this.scrollTickCounter < 2 && absX < 6 && absY < 6) {
+          return;
+        }
+        if (absX < 2.5 && absY < 2.5) {
+          return;
+        }
+        this.scrollTickCounter = 0;
         const dx = Math.round(this.bucketX);
         const dy = Math.round(this.bucketY);
+        this.bucketX -= dx;
+        this.bucketY -= dy;
 
+        if ((dx !== 0 || dy !== 0) && globalThis.wearableBridge) {
+          globalThis.wearableBridge.sendPacket({
+            tag: 'mouse',
+            act: 's',
+            dx: dx,
+            dy: dy
+          });
+        }
+      } else {
+        const dx = Math.round(this.bucketX);
+        const dy = Math.round(this.bucketY);
         if (dx !== 0 || dy !== 0) {
           this.bucketX -= dx;
           this.bucketY -= dy;
-
           if (globalThis.wearableBridge) {
-            const actType = this.activeGestureMode === 'scroll' ? 's' : 'm';
             globalThis.wearableBridge.sendPacket({
               tag: 'mouse',
-              act: actType,
+              act: 'm',
               dx: dx,
               dy: dy
             });
@@ -185,23 +207,32 @@ export default {
     this.totalMoved = 0;
     this.bucketX = 0;
     this.bucketY = 0;
-    this.isMoveUnlocked = this.tapLockPx <= 0;
+    this.scrollTickCounter = 0;
     this.clearHybridTimer();
 
     if (this.controlMode === 'scroll') {
       this.activeGestureMode = 'scroll';
+      this.hybridPending = false;
+      this.isMoveUnlocked = true;
     } else if (this.controlMode === 'hybrid') {
       this.activeGestureMode = 'cursor';
+      this.hybridPending = true;
+      this.isMoveUnlocked = false;
       this.hybridHoldTimer = setTimeout(() => {
         this.hybridHoldTimer = null;
-        if (!this.isMoveUnlocked || this.totalMoved < Math.max(6, this.tapLockPx + 2)) {
+        if (this.hybridPending) {
+          this.hybridPending = false;
           this.activeGestureMode = 'scroll';
           this.isMoveUnlocked = true;
+          this.bucketX = 0;
+          this.bucketY = 0;
           globalThis.triggerHaptic('soft');
         }
       }, this.hybridHoldMs);
     } else {
       this.activeGestureMode = 'cursor';
+      this.hybridPending = false;
+      this.isMoveUnlocked = this.tapLockPx <= 0;
     }
   },
 
@@ -216,15 +247,20 @@ export default {
 
     this.totalMoved += Math.abs(dx) + Math.abs(dy);
 
-    if (!this.isMoveUnlocked) {
+    if (this.hybridPending) {
+      const holdTolerance = Math.max(8, this.tapLockPx + 4);
+      if (this.totalMoved < holdTolerance) {
+        return;
+      }
+      this.hybridPending = false;
+      this.clearHybridTimer();
+      this.activeGestureMode = 'cursor';
+      this.isMoveUnlocked = true;
+    } else if (!this.isMoveUnlocked) {
       if (this.totalMoved < this.tapLockPx) {
         return;
       }
       this.isMoveUnlocked = true;
-      // Если в режиме Гибрид пользователь сразу начал двигать палец до таймера — остаёмся в режиме курсора
-      if (this.hybridHoldTimer) {
-        this.clearHybridTimer();
-      }
     }
 
     this.bucketX += dx;
@@ -232,10 +268,10 @@ export default {
   },
 
   onTouchEnd() {
+    this.hybridPending = false;
     this.clearHybridTimer();
     const elapsed = Date.now() - this.startTime;
 
-    // В режиме скролла (или после срабатывания гибридного скролла) клик полностью отключён!
     if (this.activeGestureMode === 'scroll' || this.controlMode === 'scroll') {
       this.bucketX = 0;
       this.bucketY = 0;
@@ -256,6 +292,7 @@ export default {
   },
 
   onTouchCancel() {
+    this.hybridPending = false;
     this.clearHybridTimer();
     this.bucketX = 0;
     this.bucketY = 0;
