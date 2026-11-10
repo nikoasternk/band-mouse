@@ -1,0 +1,89 @@
+name: Build and Release Band Mouse
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Sync App Icon to Android
+        run: |
+          mkdir -p phone/app/src/main/res/drawable
+          cp watch/src/common/logo.png phone/app/src/main/res/drawable/ic_launcher.png
+
+      - name: Prepare Persistent Unified Signing Keys
+        run: |
+          mkdir -p keys watch/sign watch/sign/debug watch/sign/release
+          if [ ! -f keys/release.keystore ] || [ ! -f keys/private.pem ] || [ ! -f keys/certificate.pem ]; then
+            openssl genrsa -out keys/private_raw.pem 2048
+            openssl rsa -in keys/private_raw.pem -traditional -out keys/private.pem
+            openssl req -new -x509 -key keys/private.pem -out keys/certificate.pem -days 3650 -subj "/CN=BandMouse/O=Band/C=US"
+            openssl pkcs12 -export -in keys/certificate.pem -inkey keys/private.pem -out keys/release.p12 -name bandmousekey -password pass:bandmouse123
+            rm -f keys/release.keystore
+            keytool -importkeystore -srckeystore keys/release.p12 -srcstoretype PKCS12 -srcstorepass bandmouse123 -destkeystore keys/release.keystore -deststorepass bandmouse123 -destkeypass bandmouse123 -noprompt
+            rm -f keys/private_raw.pem keys/release.p12
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add keys/private.pem keys/certificate.pem keys/release.keystore
+            git commit -m "chore: save unified signing keys for Band Mouse" || true
+            git push origin HEAD:main || true
+          fi
+          cp keys/private.pem watch/sign/private.pem
+          cp keys/certificate.pem watch/sign/certificate.pem
+          cp keys/private.pem watch/sign/debug/private.pem
+          cp keys/certificate.pem watch/sign/debug/certificate.pem
+          cp keys/private.pem watch/sign/release/private.pem
+          cp keys/certificate.pem watch/sign/release/certificate.pem
+
+      - name: Build Watch RPK
+        run: |
+          cd watch
+          npm install
+          npx aiot release --enable-custom-component --enable-jsc
+          mkdir -p ../dist
+          cp dist/*.rpk ../dist/bandmouse-watch.rpk
+
+      - name: Build Android APK
+        run: |
+          cd phone
+          gradle assembleRelease
+          mkdir -p ../dist
+          cp app/build/outputs/apk/release/app-release.apk ../dist/bandmouse-phone.apk
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v1.0.${{ github.run_number }}"
+          name: "Band Mouse v1.0.${{ github.run_number }}"
+          body: "Automated build #${{ github.run_number }}."
+          files: |
+            dist/bandmouse-watch.rpk
+            dist/bandmouse-phone.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
