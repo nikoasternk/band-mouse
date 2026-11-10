@@ -1,8 +1,8 @@
 {
   "package": "com.band.mouse",
   "name": "Band Mouse",
-  "versionName": "1.0.0",
-  "versionCode": 100,
+  "versionName": "1.1.0",
+  "versionCode": 110,
   "minPlatformVersion": 1100,
   "icon": "/common/logo.png",
   "deviceTypeList": [
@@ -10,6 +10,7 @@
   ],
   "features": [
     { "name": "system.router" },
+    { "name": "system.storage" },
     { "name": "system.interconnect" },
     { "name": "system.brightness" },
     { "name": "system.vibrator" },
@@ -22,7 +23,9 @@
   "router": {
     "entry": "pages/touchpad",
     "pages": {
-      "pages/touchpad": { "component": "touchpad", "launchMode": "singleTask" }
+      "pages/touchpad": { "component": "touchpad", "launchMode": "singleTask" },
+      "pages/menu": { "component": "menu" },
+      "pages/settings": { "component": "settings" }
     }
   },
   "display": {
