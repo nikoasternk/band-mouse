@@ -9,8 +9,8 @@
 
       <div class="mode-card">
         <text class="card-title" style="font-size: {{modeTitleFont}}px;">{{strings.modeTitle}}</text>
-        <div class="{{isScroll ? 'mode-toggle toggle-scroll' : 'mode-toggle toggle-cursor'}}" @click="toggleControlMode">
-          <text class="{{isScroll ? 'toggle-txt-scroll' : 'toggle-txt-cursor'}}" style="font-size: {{modeBtnFont}}px;">{{isScroll ? strings.modeScroll : strings.modeCursor}}</text>
+        <div class="{{controlMode === 'scroll' ? 'mode-toggle toggle-dark' : 'mode-toggle toggle-light'}}" @click="cycleControlMode">
+          <text class="{{controlMode === 'scroll' ? 'toggle-txt-light' : 'toggle-txt-dark'}}" style="font-size: {{modeBtnFont}}px;">{{modeLabel}}</text>
         </div>
       </div>
 
@@ -29,13 +29,13 @@
 
 <script>
 import router from '@system.router'
-import vibrator from '@system.vibrator'
 import { getStrings, fitFontSize } from '../../services/Localization'
 
 export default {
   private: {
     strings: getStrings('auto'),
-    isScroll: false,
+    controlMode: 'cursor',
+    modeLabel: 'CURSOR',
     backFont: 22,
     modeTitleFont: 19,
     modeBtnFont: 21,
@@ -47,8 +47,8 @@ export default {
     globalThis.notifyPageShown();
     globalThis.loadMouseConfig((cfg) => {
       this.strings = getStrings(cfg.language || 'auto');
-      this.isScroll = cfg.controlMode === 'scroll';
-      this.updateFonts();
+      this.controlMode = cfg.controlMode || 'cursor';
+      this.updateModeLabelAndFonts();
     });
   },
 
@@ -56,34 +56,49 @@ export default {
     globalThis.notifyPageHidden();
   },
 
-  updateFonts() {
+  updateModeLabelAndFonts() {
     const s = this.strings;
+    if (this.controlMode === 'scroll') {
+      this.modeLabel = s.modeScroll;
+    } else if (this.controlMode === 'hybrid') {
+      this.modeLabel = s.modeHybrid;
+    } else {
+      this.modeLabel = s.modeCursor;
+    }
+
     this.backFont = fitFontSize(s.backToPad, 172, 23, 16, true);
     this.modeTitleFont = fitFontSize(s.modeTitle, 172, 19, 14, false);
-    const modeLabel = this.isScroll ? s.modeScroll : s.modeCursor;
-    this.modeBtnFont = fitFontSize(modeLabel, 164, 22, 16, true);
+    this.modeBtnFont = fitFontSize(this.modeLabel, 164, 22, 16, true);
     this.settingsFont = fitFontSize(s.settings, 172, 23, 16, true);
     this.exitFont = fitFontSize(s.exitApp, 172, 23, 16, true);
   },
 
-  toggleControlMode() {
-    this.isScroll = !this.isScroll;
-    globalThis.mouseConfig.controlMode = this.isScroll ? 'scroll' : 'cursor';
+  cycleControlMode() {
+    if (this.controlMode === 'cursor') {
+      this.controlMode = 'scroll';
+    } else if (this.controlMode === 'scroll') {
+      this.controlMode = 'hybrid';
+    } else {
+      this.controlMode = 'cursor';
+    }
+    globalThis.mouseConfig.controlMode = this.controlMode;
     globalThis.saveMouseConfig();
-    this.updateFonts();
-    try { vibrator.vibrate({ mode: 'short' }); } catch (e) {}
+    this.updateModeLabelAndFonts();
+    globalThis.triggerHaptic('soft');
   },
 
   goBackToPad() {
+    globalThis.triggerHaptic('soft');
     router.back();
   },
 
   openSettings() {
+    globalThis.triggerHaptic('soft');
     router.push({ uri: 'pages/settings' });
   },
 
   exitApplication() {
-    try { vibrator.vibrate({ mode: 'short' }); } catch (e) {}
+    globalThis.triggerHaptic('short');
     globalThis.forceCloseWatchApp(this.$app);
   }
 }
@@ -163,21 +178,21 @@ export default {
   align-items: center;
 }
 
-.toggle-cursor {
+.toggle-light {
   background-color: #FFFFFF;
 }
 
-.toggle-scroll {
+.toggle-dark {
   background-color: #303030;
 }
 
-.toggle-txt-cursor {
+.toggle-txt-dark {
   color: #000000;
   font-weight: bold;
   lines: 1;
 }
 
-.toggle-txt-scroll {
+.toggle-txt-light {
   color: #FFFFFF;
   font-weight: bold;
   lines: 1;
