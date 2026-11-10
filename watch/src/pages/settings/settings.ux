@@ -1,0 +1,425 @@
+<template>
+  <div class="settings-page">
+    <scroll class="settings-scroll" scroll-y="true">
+      <div class="edge-spacer"></div>
+
+      <div class="back-btn" @click="goBack">
+        <text class="back-btn-txt" style="font-size: {{backBtnFont}}px;">{{strings.back}}</text>
+      </div>
+
+      <div class="{{hasUnsavedChanges ? 'save-btn save-btn-active' : 'save-btn'}}" @click="saveNow">
+        <text class="{{hasUnsavedChanges ? 'save-btn-txt-active' : 'save-btn-txt'}}" style="font-size: {{saveBtnFont}}px;">{{justSaved ? strings.savedStatus : strings.saveSettings}}</text>
+      </div>
+
+      <div class="card">
+        <text class="card-title" style="font-size: {{langTitleFont}}px;">{{strings.language}}</text>
+        <div class="toggle-btn toggle-on" @click="cycleLanguage">
+          <text class="toggle-txt-on" style="font-size: {{langBtnFont}}px;">{{languageLabel}}</text>
+        </div>
+      </div>
+
+      <div class="card">
+        <text class="card-title" style="font-size: {{navTitleFont}}px;">{{strings.navBarTitle}}</text>
+        <div class="toggle-btn {{showNavBar ? 'toggle-on' : 'toggle-off'}}" @click="toggleNavBar">
+          <text class="{{showNavBar ? 'toggle-txt-on' : 'toggle-txt-off'}}">{{showNavBar ? strings.enabled : strings.disabled}}</text>
+        </div>
+      </div>
+
+      <div class="card">
+        <text class="card-title" style="font-size: {{stealthTitleFont}}px;">{{strings.stealthSquareTitle}}</text>
+        <div class="toggle-btn {{stealthOnSquare ? 'toggle-on' : 'toggle-off'}}" @click="toggleStealthSquare">
+          <text class="{{stealthOnSquare ? 'toggle-txt-on' : 'toggle-txt-off'}}">{{stealthOnSquare ? strings.enabled : strings.disabled}}</text>
+        </div>
+      </div>
+
+      <div class="card">
+        <text class="card-title" style="font-size: {{keepTitleFont}}px;">{{strings.keepScreenOn}}</text>
+        <div class="toggle-btn {{stayAwake ? 'toggle-on' : 'toggle-off'}}" @click="toggleStayAwake">
+          <text class="{{stayAwake ? 'toggle-txt-on' : 'toggle-txt-off'}}">{{stayAwake ? strings.enabled : strings.disabled}}</text>
+        </div>
+      </div>
+
+      <div class="card">
+        <text class="card-title" style="font-size: {{customBrTitleFont}}px;">{{strings.customBrightness}}</text>
+        <div class="toggle-btn {{customBrightness ? 'toggle-on' : 'toggle-off'}}" @click="toggleCustomBrightness">
+          <text class="{{customBrightness ? 'toggle-txt-on' : 'toggle-txt-off'}}">{{customBrightness ? strings.enabled : strings.disabled}}</text>
+        </div>
+      </div>
+
+      <div class="card" if="{{customBrightness}}">
+        <text class="card-title" style="font-size: {{brTitleFont}}px;">{{strings.brightness}}</text>
+        <div class="ctrl-row">
+          <div class="ctrl-btn" @click="changeBrightness(-10)">
+            <text class="ctrl-btn-txt">-</text>
+          </div>
+          <text class="ctrl-val">{{brightnessPct}}%</text>
+          <div class="ctrl-btn" @click="changeBrightness(10)">
+            <text class="ctrl-btn-txt">+</text>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <text class="card-title" style="font-size: {{resetTitleFont}}px;">{{strings.resetSettings}}</text>
+        <div class="toggle-btn {{confirmReset ? 'toggle-on' : 'toggle-off'}}" @click="onResetTap">
+          <text class="{{confirmReset ? 'toggle-txt-on' : 'toggle-txt-off'}}" style="font-size: {{resetBtnFont}}px;">{{confirmReset ? strings.resetConfirm : strings.resetSettings}}</text>
+        </div>
+      </div>
+
+      <div class="edge-spacer-bottom"></div>
+    </scroll>
+  </div>
+</template>
+
+<script>
+import brightness from '@system.brightness'
+import router from '@system.router'
+import { getStrings, pctToHardwareBrightness, fitFontSize } from '../../services/Localization'
+
+export default {
+  private: {
+    strings: getStrings('auto'),
+    language: 'auto',
+    languageLabel: 'Auto',
+    showNavBar: true,
+    stealthOnSquare: true,
+    stayAwake: true,
+    customBrightness: false,
+    brightnessPct: 80,
+    hasUnsavedChanges: false,
+    justSaved: false,
+    confirmReset: false,
+    backBtnFont: 22,
+    saveBtnFont: 22,
+    langTitleFont: 20,
+    langBtnFont: 20,
+    navTitleFont: 20,
+    stealthTitleFont: 20,
+    keepTitleFont: 20,
+    customBrTitleFont: 20,
+    brTitleFont: 20,
+    resetTitleFont: 20,
+    resetBtnFont: 18
+  },
+
+  onInit() {
+    this.loadSavedSettings();
+  },
+
+  onShow() {
+    globalThis.notifyPageShown();
+  },
+
+  onHide() {
+    globalThis.notifyPageHidden();
+  },
+
+  loadSavedSettings() {
+    globalThis.loadMouseConfig((cfg) => {
+      this.language = cfg.language || 'auto';
+      this.showNavBar = cfg.showNavBar !== false;
+      this.stealthOnSquare = cfg.stealthOnSquare !== false;
+      this.stayAwake = cfg.stayAwake !== false;
+      this.customBrightness = cfg.customBrightness === true;
+      this.brightnessPct = cfg.brightnessPct !== undefined ? cfg.brightnessPct : 80;
+      this.hasUnsavedChanges = false;
+      this.applyLanguagePreview();
+      this.applyBrightnessPreview();
+    });
+  },
+
+  updateAdaptiveFonts() {
+    const s = this.strings;
+    this.backBtnFont = fitFontSize(s.back, 172, 24, 15, true);
+    const saveTxt = this.justSaved ? s.savedStatus : s.saveSettings;
+    this.saveBtnFont = fitFontSize(saveTxt, 172, 24, 15, true);
+    this.langTitleFont = fitFontSize(s.language, 172, 21, 15, false);
+    this.langBtnFont = fitFontSize(this.languageLabel, 164, 22, 15, true);
+    this.navTitleFont = fitFontSize(s.navBarTitle, 172, 20, 14, false);
+    this.stealthTitleFont = fitFontSize(s.stealthSquareTitle, 172, 20, 14, false);
+    this.keepTitleFont = fitFontSize(s.keepScreenOn, 172, 20, 15, false);
+    this.customBrTitleFont = fitFontSize(s.customBrightness, 172, 20, 15, false);
+    this.brTitleFont = fitFontSize(s.brightness, 172, 21, 15, false);
+    this.resetTitleFont = fitFontSize(s.resetSettings, 172, 20, 15, false);
+    const resetBtnTxt = this.confirmReset ? s.resetConfirm : s.resetSettings;
+    this.resetBtnFont = fitFontSize(resetBtnTxt, 164, 19, 14, true);
+  },
+
+  markModified() {
+    this.hasUnsavedChanges = true;
+    this.justSaved = false;
+    this.confirmReset = false;
+    this.commitToMemoryAndStorage();
+    this.updateAdaptiveFonts();
+  },
+
+  commitToMemoryAndStorage() {
+    globalThis.mouseConfig.language = this.language;
+    globalThis.mouseConfig.showNavBar = this.showNavBar;
+    globalThis.mouseConfig.stealthOnSquare = this.stealthOnSquare;
+    globalThis.mouseConfig.stayAwake = this.stayAwake;
+    globalThis.mouseConfig.customBrightness = this.customBrightness;
+    globalThis.mouseConfig.brightnessPct = this.brightnessPct;
+    globalThis.saveMouseConfig();
+  },
+
+  applyLanguagePreview() {
+    this.strings = getStrings(this.language);
+    if (this.language === 'en') {
+      this.languageLabel = this.strings.langEn;
+    } else if (this.language === 'ru') {
+      this.languageLabel = this.strings.langRu;
+    } else {
+      this.languageLabel = this.strings.langAuto;
+    }
+    this.updateAdaptiveFonts();
+  },
+
+  applyBrightnessPreview() {
+    try {
+      if (this.customBrightness) {
+        brightness.setMode({ mode: 0 });
+        brightness.setValue({ value: pctToHardwareBrightness(this.brightnessPct) });
+      } else {
+        brightness.setMode({ mode: 1 });
+      }
+      brightness.setKeepScreenOn({ keepScreenOn: this.stayAwake });
+    } catch (e) {}
+  },
+
+  cycleLanguage() {
+    if (this.language === 'auto') {
+      this.language = 'en';
+    } else if (this.language === 'en') {
+      this.language = 'ru';
+    } else {
+      this.language = 'auto';
+    }
+    this.applyLanguagePreview();
+    this.markModified();
+  },
+
+  toggleNavBar() {
+    this.showNavBar = !this.showNavBar;
+    this.markModified();
+  },
+
+  toggleStealthSquare() {
+    this.stealthOnSquare = !this.stealthOnSquare;
+    this.markModified();
+  },
+
+  toggleStayAwake() {
+    this.stayAwake = !this.stayAwake;
+    this.applyBrightnessPreview();
+    this.markModified();
+  },
+
+  toggleCustomBrightness() {
+    this.customBrightness = !this.customBrightness;
+    this.applyBrightnessPreview();
+    this.markModified();
+  },
+
+  changeBrightness(delta) {
+    if (!this.customBrightness) return;
+    if (this.brightnessPct === 1 && delta > 0) {
+      this.brightnessPct = 10;
+    } else if (this.brightnessPct === 10 && delta < 0) {
+      this.brightnessPct = 1;
+    } else {
+      const next = Math.round((this.brightnessPct + delta) / 10) * 10;
+      this.brightnessPct = Math.max(1, Math.min(100, next));
+    }
+    this.applyBrightnessPreview();
+    this.markModified();
+  },
+
+  saveNow() {
+    this.hasUnsavedChanges = false;
+    this.justSaved = true;
+    this.confirmReset = false;
+    this.commitToMemoryAndStorage();
+    this.updateAdaptiveFonts();
+  },
+
+  onResetTap() {
+    if (!this.confirmReset) {
+      this.confirmReset = true;
+      this.updateAdaptiveFonts();
+      return;
+    }
+    this.confirmReset = false;
+    this.language = 'auto';
+    this.showNavBar = true;
+    this.stealthOnSquare = true;
+    this.stayAwake = true;
+    this.customBrightness = false;
+    this.brightnessPct = 80;
+    this.applyLanguagePreview();
+    this.applyBrightnessPreview();
+    this.saveNow();
+  },
+
+  goBack() {
+    router.back();
+  }
+}
+</script>
+
+<style>
+.settings-page {
+  width: 212px;
+  height: 520px;
+  background-color: #000000;
+}
+
+.settings-scroll {
+  width: 212px;
+  height: 520px;
+  flex-direction: column;
+  align-items: center;
+}
+
+.edge-spacer {
+  width: 200px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.edge-spacer-bottom {
+  width: 200px;
+  height: 56px;
+  flex-shrink: 0;
+}
+
+.back-btn {
+  width: 200px;
+  height: 68px;
+  flex-shrink: 0;
+  background-color: #262626;
+  border-radius: 26px;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.back-btn-txt {
+  color: #FFFFFF;
+  font-weight: bold;
+  text-align: center;
+  lines: 1;
+}
+
+.save-btn {
+  width: 200px;
+  height: 68px;
+  flex-shrink: 0;
+  background-color: #2E2E2E;
+  border-radius: 26px;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.save-btn-active {
+  background-color: #FFFFFF;
+}
+
+.save-btn-txt {
+  color: #CCCCCC;
+  font-weight: bold;
+  text-align: center;
+  lines: 1;
+}
+
+.save-btn-txt-active {
+  color: #000000;
+  font-weight: bold;
+  text-align: center;
+  lines: 1;
+}
+
+.card {
+  width: 200px;
+  height: 152px;
+  flex-shrink: 0;
+  background-color: #1A1A1A;
+  border-radius: 26px;
+  padding: 12px 10px;
+  margin-bottom: 10px;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-title {
+  width: 176px;
+  color: #FFFFFF;
+  font-weight: bold;
+  text-align: center;
+  lines: 2;
+}
+
+.toggle-btn {
+  width: 176px;
+  height: 60px;
+  flex-shrink: 0;
+  border-radius: 22px;
+  padding: 0 6px;
+  justify-content: center;
+  align-items: center;
+}
+
+.toggle-on {
+  background-color: #FFFFFF;
+}
+
+.toggle-off {
+  background-color: #303030;
+}
+
+.toggle-txt-on {
+  color: #000000;
+  font-weight: bold;
+  text-align: center;
+  lines: 1;
+}
+
+.toggle-txt-off {
+  color: #FFFFFF;
+  font-weight: bold;
+  text-align: center;
+  lines: 1;
+}
+
+.ctrl-row {
+  width: 176px;
+  height: 60px;
+  flex-shrink: 0;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ctrl-btn {
+  width: 56px;
+  height: 60px;
+  flex-shrink: 0;
+  background-color: #303030;
+  border-radius: 18px;
+  justify-content: center;
+  align-items: center;
+}
+
+.ctrl-btn-txt {
+  color: #FFFFFF;
+  font-size: 32px;
+  font-weight: bold;
+}
+
+.ctrl-val {
+  color: #FFFFFF;
+  font-size: 24px;
+  font-weight: bold;
+}
+</style>
