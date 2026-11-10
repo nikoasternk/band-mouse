@@ -11,6 +11,7 @@
         <text class="{{hasUnsavedChanges ? 'save-btn-txt-active' : 'save-btn-txt'}}" style="font-size: {{saveBtnFont}}px;">{{justSaved ? strings.savedStatus : strings.saveSettings}}</text>
       </div>
 
+      <!-- Язык -->
       <div class="card">
         <text class="card-title" style="font-size: {{langTitleFont}}px;">{{strings.language}}</text>
         <div class="toggle-btn toggle-on" @click="cycleLanguage">
@@ -18,6 +19,57 @@
         </div>
       </div>
 
+      <!-- Вибрация -->
+      <div class="card">
+        <text class="card-title" style="font-size: {{vibTitleFont}}px;">{{strings.vibrationTitle}}</text>
+        <div class="toggle-btn {{vibration ? 'toggle-on' : 'toggle-off'}}" @click="toggleVibration">
+          <text class="{{vibration ? 'toggle-txt-on' : 'toggle-txt-off'}}">{{vibration ? strings.enabled : strings.disabled}}</text>
+        </div>
+      </div>
+
+      <!-- Стабилизация клика (в пикселях) -->
+      <div class="card">
+        <text class="card-title" style="font-size: {{tapLockTitleFont}}px;">{{strings.tapLockTitle}}</text>
+        <div class="ctrl-row">
+          <div class="ctrl-btn" @click="changeTapLock(-1)">
+            <text class="ctrl-btn-txt">-</text>
+          </div>
+          <text class="ctrl-val">{{tapLockPx}}px</text>
+          <div class="ctrl-btn" @click="changeTapLock(1)">
+            <text class="ctrl-btn-txt">+</text>
+          </div>
+        </div>
+      </div>
+
+      <!-- Время удержания для Гибридного режима (мс) -->
+      <div class="card">
+        <text class="card-title" style="font-size: {{hybridHoldTitleFont}}px;">{{strings.hybridHoldTitle}}</text>
+        <div class="ctrl-row">
+          <div class="ctrl-btn" @click="changeHybridHold(-100)">
+            <text class="ctrl-btn-txt">-</text>
+          </div>
+          <text class="ctrl-val">{{hybridHoldMs}}ms</text>
+          <div class="ctrl-btn" @click="changeHybridHold(100)">
+            <text class="ctrl-btn-txt">+</text>
+          </div>
+        </div>
+      </div>
+
+      <!-- Размер кнопки Меню -->
+      <div class="card">
+        <text class="card-title" style="font-size: {{menuSizeTitleFont}}px;">{{strings.menuSizeTitle}}</text>
+        <div class="ctrl-row">
+          <div class="ctrl-btn" @click="changeMenuScale(-10)">
+            <text class="ctrl-btn-txt">-</text>
+          </div>
+          <text class="ctrl-val">{{menuBtnScale}}%</text>
+          <div class="ctrl-btn" @click="changeMenuScale(10)">
+            <text class="ctrl-btn-txt">+</text>
+          </div>
+        </div>
+      </div>
+
+      <!-- Панель телефона (ВКЛ/ВЫКЛ) -->
       <div class="card">
         <text class="card-title" style="font-size: {{navTitleFont}}px;">{{strings.navBarTitle}}</text>
         <div class="toggle-btn {{showNavBar ? 'toggle-on' : 'toggle-off'}}" @click="toggleNavBar">
@@ -25,6 +77,21 @@
         </div>
       </div>
 
+      <!-- Размер кнопок панели телефона -->
+      <div class="card" if="{{showNavBar}}">
+        <text class="card-title" style="font-size: {{navSizeTitleFont}}px;">{{strings.navSizeTitle}}</text>
+        <div class="ctrl-row">
+          <div class="ctrl-btn" @click="changeNavScale(-10)">
+            <text class="ctrl-btn-txt">-</text>
+          </div>
+          <text class="ctrl-val">{{navBarScale}}%</text>
+          <div class="ctrl-btn" @click="changeNavScale(10)">
+            <text class="ctrl-btn-txt">+</text>
+          </div>
+        </div>
+      </div>
+
+      <!-- Скрытность на квадратик (ВКЛ/ВЫКЛ) -->
       <div class="card">
         <text class="card-title" style="font-size: {{stealthTitleFont}}px;">{{strings.stealthSquareTitle}}</text>
         <div class="toggle-btn {{stealthOnSquare ? 'toggle-on' : 'toggle-off'}}" @click="toggleStealthSquare">
@@ -32,6 +99,21 @@
         </div>
       </div>
 
+      <!-- Сколько секунд держать квадратик (1..5 сек) -->
+      <div class="card" if="{{stealthOnSquare}}">
+        <text class="card-title" style="font-size: {{stealthHoldTitleFont}}px;">{{strings.stealthHoldTitle}}</text>
+        <div class="ctrl-row">
+          <div class="ctrl-btn" @click="changeStealthHold(-1)">
+            <text class="ctrl-btn-txt">-</text>
+          </div>
+          <text class="ctrl-val">{{stealthHoldSec}}s</text>
+          <div class="ctrl-btn" @click="changeStealthHold(1)">
+            <text class="ctrl-btn-txt">+</text>
+          </div>
+        </div>
+      </div>
+
+      <!-- Не гасить экран -->
       <div class="card">
         <text class="card-title" style="font-size: {{keepTitleFont}}px;">{{strings.keepScreenOn}}</text>
         <div class="toggle-btn {{stayAwake ? 'toggle-on' : 'toggle-off'}}" @click="toggleStayAwake">
@@ -39,6 +121,7 @@
         </div>
       </div>
 
+      <!-- Своя яркость -->
       <div class="card">
         <text class="card-title" style="font-size: {{customBrTitleFont}}px;">{{strings.customBrightness}}</text>
         <div class="toggle-btn {{customBrightness ? 'toggle-on' : 'toggle-off'}}" @click="toggleCustomBrightness">
@@ -59,11 +142,9 @@
         </div>
       </div>
 
-      <div class="card">
-        <text class="card-title" style="font-size: {{resetTitleFont}}px;">{{strings.resetSettings}}</text>
-        <div class="toggle-btn {{confirmReset ? 'toggle-on' : 'toggle-off'}}" @click="onResetTap">
-          <text class="{{confirmReset ? 'toggle-txt-on' : 'toggle-txt-off'}}" style="font-size: {{resetBtnFont}}px;">{{confirmReset ? strings.resetConfirm : strings.resetSettings}}</text>
-        </div>
+      <!-- Одиночная кнопка сброса настроек без отдельной вкладки/карточки -->
+      <div class="{{confirmReset ? 'reset-single-btn reset-single-active' : 'reset-single-btn'}}" @click="onResetTap">
+        <text class="{{confirmReset ? 'reset-single-txt-active' : 'reset-single-txt'}}" style="font-size: {{resetBtnFont}}px;">{{confirmReset ? strings.resetConfirm : strings.resetSettings}}</text>
       </div>
 
       <div class="edge-spacer-bottom"></div>
@@ -81,8 +162,14 @@ export default {
     strings: getStrings('auto'),
     language: 'auto',
     languageLabel: 'Auto',
+    vibration: true,
+    tapLockPx: 4,
+    hybridHoldMs: 400,
+    menuBtnScale: 100,
     showNavBar: true,
+    navBarScale: 100,
     stealthOnSquare: true,
+    stealthHoldSec: 3,
     stayAwake: true,
     customBrightness: false,
     brightnessPct: 80,
@@ -93,13 +180,18 @@ export default {
     saveBtnFont: 22,
     langTitleFont: 20,
     langBtnFont: 20,
+    vibTitleFont: 20,
+    tapLockTitleFont: 20,
+    hybridHoldTitleFont: 20,
+    menuSizeTitleFont: 20,
     navTitleFont: 20,
+    navSizeTitleFont: 20,
     stealthTitleFont: 20,
+    stealthHoldTitleFont: 20,
     keepTitleFont: 20,
     customBrTitleFont: 20,
     brTitleFont: 20,
-    resetTitleFont: 20,
-    resetBtnFont: 18
+    resetBtnFont: 20
   },
 
   onInit() {
@@ -117,8 +209,14 @@ export default {
   loadSavedSettings() {
     globalThis.loadMouseConfig((cfg) => {
       this.language = cfg.language || 'auto';
+      this.vibration = cfg.vibration !== false;
+      this.tapLockPx = cfg.tapLockPx !== undefined ? cfg.tapLockPx : 4;
+      this.hybridHoldMs = cfg.hybridHoldMs || 400;
+      this.menuBtnScale = cfg.menuBtnScale || 100;
       this.showNavBar = cfg.showNavBar !== false;
+      this.navBarScale = cfg.navBarScale || 100;
       this.stealthOnSquare = cfg.stealthOnSquare !== false;
+      this.stealthHoldSec = cfg.stealthHoldSec || 3;
       this.stayAwake = cfg.stayAwake !== false;
       this.customBrightness = cfg.customBrightness === true;
       this.brightnessPct = cfg.brightnessPct !== undefined ? cfg.brightnessPct : 80;
@@ -135,14 +233,19 @@ export default {
     this.saveBtnFont = fitFontSize(saveTxt, 172, 24, 15, true);
     this.langTitleFont = fitFontSize(s.language, 172, 21, 15, false);
     this.langBtnFont = fitFontSize(this.languageLabel, 164, 22, 15, true);
+    this.vibTitleFont = fitFontSize(s.vibrationTitle, 172, 20, 14, false);
+    this.tapLockTitleFont = fitFontSize(s.tapLockTitle, 172, 20, 14, false);
+    this.hybridHoldTitleFont = fitFontSize(s.hybridHoldTitle, 172, 20, 14, false);
+    this.menuSizeTitleFont = fitFontSize(s.menuSizeTitle, 172, 20, 14, false);
     this.navTitleFont = fitFontSize(s.navBarTitle, 172, 20, 14, false);
+    this.navSizeTitleFont = fitFontSize(s.navSizeTitle, 172, 20, 14, false);
     this.stealthTitleFont = fitFontSize(s.stealthSquareTitle, 172, 20, 14, false);
+    this.stealthHoldTitleFont = fitFontSize(s.stealthHoldTitle, 172, 20, 14, false);
     this.keepTitleFont = fitFontSize(s.keepScreenOn, 172, 20, 15, false);
     this.customBrTitleFont = fitFontSize(s.customBrightness, 172, 20, 15, false);
     this.brTitleFont = fitFontSize(s.brightness, 172, 21, 15, false);
-    this.resetTitleFont = fitFontSize(s.resetSettings, 172, 20, 15, false);
     const resetBtnTxt = this.confirmReset ? s.resetConfirm : s.resetSettings;
-    this.resetBtnFont = fitFontSize(resetBtnTxt, 164, 19, 14, true);
+    this.resetBtnFont = fitFontSize(resetBtnTxt, 172, 22, 15, true);
   },
 
   markModified() {
@@ -151,12 +254,19 @@ export default {
     this.confirmReset = false;
     this.commitToMemoryAndStorage();
     this.updateAdaptiveFonts();
+    globalThis.triggerHaptic('soft');
   },
 
   commitToMemoryAndStorage() {
     globalThis.mouseConfig.language = this.language;
+    globalThis.mouseConfig.vibration = this.vibration;
+    globalThis.mouseConfig.tapLockPx = this.tapLockPx;
+    globalThis.mouseConfig.hybridHoldMs = this.hybridHoldMs;
+    globalThis.mouseConfig.menuBtnScale = this.menuBtnScale;
     globalThis.mouseConfig.showNavBar = this.showNavBar;
+    globalThis.mouseConfig.navBarScale = this.navBarScale;
     globalThis.mouseConfig.stealthOnSquare = this.stealthOnSquare;
+    globalThis.mouseConfig.stealthHoldSec = this.stealthHoldSec;
     globalThis.mouseConfig.stayAwake = this.stayAwake;
     globalThis.mouseConfig.customBrightness = this.customBrightness;
     globalThis.mouseConfig.brightnessPct = this.brightnessPct;
@@ -199,13 +309,43 @@ export default {
     this.markModified();
   },
 
+  toggleVibration() {
+    this.vibration = !this.vibration;
+    this.markModified();
+  },
+
+  changeTapLock(delta) {
+    this.tapLockPx = Math.max(0, Math.min(15, this.tapLockPx + delta));
+    this.markModified();
+  },
+
+  changeHybridHold(delta) {
+    this.hybridHoldMs = Math.max(200, Math.min(1000, this.hybridHoldMs + delta));
+    this.markModified();
+  },
+
+  changeMenuScale(delta) {
+    this.menuBtnScale = Math.max(70, Math.min(140, this.menuBtnScale + delta));
+    this.markModified();
+  },
+
   toggleNavBar() {
     this.showNavBar = !this.showNavBar;
     this.markModified();
   },
 
+  changeNavScale(delta) {
+    this.navBarScale = Math.max(70, Math.min(130, this.navBarScale + delta));
+    this.markModified();
+  },
+
   toggleStealthSquare() {
     this.stealthOnSquare = !this.stealthOnSquare;
+    this.markModified();
+  },
+
+  changeStealthHold(delta) {
+    this.stealthHoldSec = Math.max(1, Math.min(5, this.stealthHoldSec + delta));
     this.markModified();
   },
 
@@ -241,18 +381,26 @@ export default {
     this.confirmReset = false;
     this.commitToMemoryAndStorage();
     this.updateAdaptiveFonts();
+    globalThis.triggerHaptic('short');
   },
 
   onResetTap() {
     if (!this.confirmReset) {
       this.confirmReset = true;
       this.updateAdaptiveFonts();
+      globalThis.triggerHaptic('soft');
       return;
     }
     this.confirmReset = false;
     this.language = 'auto';
+    this.vibration = true;
+    this.tapLockPx = 4;
+    this.hybridHoldMs = 400;
+    this.menuBtnScale = 100;
     this.showNavBar = true;
+    this.navBarScale = 100;
     this.stealthOnSquare = true;
+    this.stealthHoldSec = 3;
     this.stayAwake = true;
     this.customBrightness = false;
     this.brightnessPct = 80;
@@ -262,6 +410,7 @@ export default {
   },
 
   goBack() {
+    globalThis.triggerHaptic('soft');
     router.back();
   }
 }
@@ -421,5 +570,35 @@ export default {
   color: #FFFFFF;
   font-size: 24px;
   font-weight: bold;
+}
+
+.reset-single-btn {
+  width: 200px;
+  height: 68px;
+  flex-shrink: 0;
+  background-color: #3A1818;
+  border-radius: 26px;
+  justify-content: center;
+  align-items: center;
+  margin-top: 4px;
+  margin-bottom: 10px;
+}
+
+.reset-single-active {
+  background-color: #FFFFFF;
+}
+
+.reset-single-txt {
+  color: #FF6B6B;
+  font-weight: bold;
+  text-align: center;
+  lines: 1;
+}
+
+.reset-single-txt-active {
+  color: #000000;
+  font-weight: bold;
+  text-align: center;
+  lines: 1;
 }
 </style>
