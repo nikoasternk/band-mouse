@@ -15,12 +15,13 @@ import android.provider.Settings
 import android.view.Choreographer
 import android.view.Gravity
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import com.band.mouse.transport.WearableMouseClient
 import kotlin.math.abs
-import kotlin.math.hypot
 import kotlin.math.roundToInt
+import kotlin.math.sign
 
 class MouseAccessibilityService : AccessibilityService() {
 
@@ -58,6 +59,10 @@ class MouseAccessibilityService : AccessibilityService() {
     private var targetY = 1000f
     private var isAnimatingCursor = false
 
+    private var pendingScrollDx = 0f
+    private var pendingScrollDy = 0f
+    private var isScrollStrokeActive = false
+
     private var screenWidth = 1080
     private var screenHeight = 2400
 
@@ -68,7 +73,6 @@ class MouseAccessibilityService : AccessibilityService() {
     private val watchTimeoutRunnable = Runnable {
         isWatchAppOpen = false
         setStealthState(false)
-        updateOverlayVisibility()
     }
 
     private val frameCallback = object : Choreographer.FrameCallback {
@@ -227,6 +231,9 @@ class MouseAccessibilityService : AccessibilityService() {
         mainHandler.removeCallbacks(watchTimeoutRunnable)
         mainHandler.post {
             isAnimatingCursor = false
+            isScrollStrokeActive = false
+            pendingScrollDx = 0f
+            pendingScrollDy = 0f
             Choreographer.getInstance().removeFrameCallback(frameCallback)
             cursorView?.let {
                 try { windowManager?.removeView(it) } catch (_: Exception) {}
@@ -239,62 +246,116 @@ class MouseAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun applyStealthBrightness(enableStealth: Boolean) {
+    private fun pokeDisplayBrightness(hideStealthAfterPoke: Boolean) {
+        val view = stealthView ?: return
+        val wm = windowManager ?: return
         try {
-            if (enableStealth) {
-                if (!isBrightnessOverridden && Settings.System.canWrite(this)) {
-                    savedBrightnessMode = Settings.System.getInt(
-                        contentResolver,
-                        Settings.System.SCREEN_BRIGHTNESS_MODE,
-                        Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
-                    )
-                    savedBrightnessValue = Settings.System.getInt(
-                        contentResolver,
-                        Settings.System.SCREEN_BRIGHTNESS,
-                        128
-                    )
-                    Settings.System.putInt(
-                        contentResolver,
-                        Settings.System.SCREEN_BRIGHTNESS_MODE,
-                        Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
-                    )
-                    Settings.System.putInt(
-                        contentResolver,
-                        Settings.System.SCREEN_BRIGHTNESS,
-                        0
-                    )
-                    isBrightnessOverridden = true
-                }
-                if (::stealthParams.isInitialized) {
-                    stealthParams.screenBrightness = 0.0f
-                    stealthView?.let { try { windowManager?.updateViewLayout(it, stealthParams) } catch (_: Exception) {} }
-                }
-            } else {
-                if (isBrightnessOverridden && Settings.System.canWrite(this)) {
-                    Settings.System.putInt(
-                        contentResolver,
-                        Settings.System.SCREEN_BRIGHTNESS,
-                        savedBrightnessValue
-                    )
-                    Settings.System.putInt(
-                        contentResolver,
-                        Settings.System.SCREEN_BRIGHTNESS_MODE,
-                        savedBrightnessMode
-                    )
-                    isBrightnessOverridden = false
-                }
-                if (::stealthParams.isInitialized) {
-                    stealthParams.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-                    stealthView?.let { try { windowManager?.updateViewLayout(it, stealthParams) } catch (_: Exception) {} }
-                }
-            }
+            stealthParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            wm.updateViewLayout(view, stealthParams)
         } catch (_: Exception) {}
+
+        val pokePath = Path().apply { moveTo(1f, 1f) }
+        val stroke = GestureDescription.StrokeDescription(pokePath, 0, 5)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+
+        val restoreFlags = Runnable {
+            try {
+                stealthParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                if (hideStealthAfterPoke) {
+                    view.visibility = View.GONE
+                }
+                wm.updateViewLayout(view, stealthParams)
+            } catch (_: Exception) {}
+        }
+
+        val dispatched = dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                mainHandler.post(restoreFlags)
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                mainHandler.post(restoreFlags)
+            }
+        }, null)
+
+        if (!dispatched) {
+            mainHandler.postDelayed(restoreFlags, 25L)
+        }
     }
 
     private fun setStealthState(active: Boolean) {
-        if (isStealthActive == active && (!active || isBrightnessOverridden)) return
-        isStealthActive = active
-        applyStealthBrightness(active)
+        mainHandler.post {
+            if (isStealthActive == active && (!active || isBrightnessOverridden)) {
+                updateOverlayVisibility()
+                return@post
+            }
+            isStealthActive = active
+
+            if (active) {
+                cursorView?.visibility = View.GONE
+                stealthView?.visibility = View.VISIBLE
+                try {
+                    if (!isBrightnessOverridden && Settings.System.canWrite(this)) {
+                        savedBrightnessMode = Settings.System.getInt(
+                            contentResolver,
+                            Settings.System.SCREEN_BRIGHTNESS_MODE,
+                            Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
+                        )
+                        savedBrightnessValue = Settings.System.getInt(
+                            contentResolver,
+                            Settings.System.SCREEN_BRIGHTNESS,
+                            128
+                        )
+                        Settings.System.putInt(
+                            contentResolver,
+                            Settings.System.SCREEN_BRIGHTNESS_MODE,
+                            Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+                        )
+                        Settings.System.putInt(
+                            contentResolver,
+                            Settings.System.SCREEN_BRIGHTNESS,
+                            0
+                        )
+                        isBrightnessOverridden = true
+                    }
+                    if (::stealthParams.isInitialized) {
+                        stealthParams.screenBrightness = 0.0f
+                    }
+                } catch (_: Exception) {}
+                pokeDisplayBrightness(hideStealthAfterPoke = false)
+            } else {
+                try {
+                    if (isBrightnessOverridden && Settings.System.canWrite(this)) {
+                        Settings.System.putInt(
+                            contentResolver,
+                            Settings.System.SCREEN_BRIGHTNESS,
+                            savedBrightnessValue
+                        )
+                        Settings.System.putInt(
+                            contentResolver,
+                            Settings.System.SCREEN_BRIGHTNESS_MODE,
+                            savedBrightnessMode
+                        )
+                        isBrightnessOverridden = false
+                    }
+                    if (::stealthParams.isInitialized) {
+                        stealthParams.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                    }
+                } catch (_: Exception) {}
+                val showCursor = isServiceMasterEnabled && isWatchAppOpen
+                cursorView?.visibility = if (showCursor) View.VISIBLE else View.GONE
+                if (stealthView?.visibility == View.VISIBLE) {
+                    pokeDisplayBrightness(hideStealthAfterPoke = true)
+                } else {
+                    stealthView?.visibility = View.GONE
+                }
+            }
+        }
     }
 
     fun setMasterEnabled(enabled: Boolean) {
@@ -303,8 +364,8 @@ class MouseAccessibilityService : AccessibilityService() {
             setStealthState(false)
         } else {
             WearableMouseClient.getInstance(applicationContext).ensureListening()
+            updateOverlayVisibility()
         }
-        updateOverlayVisibility()
     }
 
     fun onWatchStateChanged(open: Boolean) {
@@ -313,10 +374,10 @@ class MouseAccessibilityService : AccessibilityService() {
             isWatchAppOpen = open
             if (open) {
                 mainHandler.postDelayed(watchTimeoutRunnable, 5000L)
+                updateOverlayVisibility()
             } else {
                 setStealthState(false)
             }
-            updateOverlayVisibility()
         }
     }
 
@@ -333,17 +394,17 @@ class MouseAccessibilityService : AccessibilityService() {
 
     fun toggleStealthMode() {
         if (!isServiceMasterEnabled) return
-        mainHandler.post {
-            setStealthState(!isStealthActive)
-            updateOverlayVisibility()
-        }
+        onWatchHeartbeat()
+        setStealthState(!isStealthActive)
     }
 
     private fun updateOverlayVisibility() {
         mainHandler.post {
             val showCursor = isServiceMasterEnabled && isWatchAppOpen && !isStealthActive
             cursorView?.visibility = if (showCursor) View.VISIBLE else View.GONE
-            stealthView?.visibility = if (isServiceMasterEnabled && isStealthActive) View.VISIBLE else View.GONE
+            if (!isStealthActive) {
+                stealthView?.visibility = View.GONE
+            }
         }
     }
 
@@ -385,20 +446,106 @@ class MouseAccessibilityService : AccessibilityService() {
         if (!isServiceMasterEnabled) return
         onWatchHeartbeat()
         mainHandler.post {
-            val startX = targetX.coerceIn(100f, (screenWidth - 100).toFloat())
-            val startY = targetY.coerceIn(200f, (screenHeight - 200).toFloat())
-            val endX = (startX + dx * scrollMultiplier).coerceIn(50f, (screenWidth - 50).toFloat())
-            val endY = (startY + dy * scrollMultiplier).coerceIn(100f, (screenHeight - 100).toFloat())
-
-            if (hypot(endX - startX, endY - startY) < 5f) return@post
-
-            val path = Path().apply {
-                moveTo(startX, startY)
-                lineTo(endX, endY)
+            pendingScrollDx += dx
+            pendingScrollDy += dy
+            if (!isScrollStrokeActive) {
+                dispatchNextScrollStroke()
             }
-            val stroke = GestureDescription.StrokeDescription(path, 0, 130)
-            val gesture = GestureDescription.Builder().addStroke(stroke).build()
-            dispatchGesture(gesture, null, null)
+        }
+    }
+
+    private fun dispatchNextScrollStroke() {
+        if (abs(pendingScrollDx) < 1f && abs(pendingScrollDy) < 1f) {
+            pendingScrollDx = 0f
+            pendingScrollDy = 0f
+            isScrollStrokeActive = false
+            return
+        }
+
+        val rawDx = pendingScrollDx
+        val rawDy = pendingScrollDy
+        pendingScrollDx = 0f
+        pendingScrollDy = 0f
+
+        val metrics = resources.displayMetrics
+        screenWidth = metrics.widthPixels
+        screenHeight = metrics.heightPixels
+
+        val touchSlop = ViewConfiguration.get(this).scaledTouchSlop.toFloat().coerceAtLeast(24f)
+        val baseBoost = touchSlop + 42f
+        val scale = scrollMultiplier * 2.2f
+
+        var moveX = 0f
+        var moveY = 0f
+
+        if (abs(rawDy) >= abs(rawDx)) {
+            moveY = sign(rawDy) * baseBoost + rawDy * scale
+        } else {
+            moveX = sign(rawDx) * baseBoost + rawDx * scale
+        }
+
+        val marginX = 120f
+        val marginY = 260f
+        var startX = targetX.coerceIn(marginX, (screenWidth - marginX).coerceAtLeast(marginX + 10f))
+        var startY = targetY.coerceIn(marginY, (screenHeight - marginY).coerceAtLeast(marginY + 10f))
+
+        var endX = startX + moveX
+        var endY = startY + moveY
+
+        if (endY < 90f) {
+            val shift = 90f - endY
+            startY = (startY + shift).coerceAtMost(screenHeight - 90f)
+            endY = 90f
+        } else if (endY > screenHeight - 90f) {
+            val shift = endY - (screenHeight - 90f)
+            startY = (startY - shift).coerceAtLeast(90f)
+            endY = screenHeight - 90f
+        }
+
+        if (endX < 60f) {
+            val shift = 60f - endX
+            startX = (startX + shift).coerceAtMost(screenWidth - 60f)
+            endX = 60f
+        } else if (endX > screenWidth - 60f) {
+            val shift = endX - (screenWidth - 60f)
+            startX = (startX - shift).coerceAtLeast(60f)
+            endX = screenWidth - 60f
+        }
+
+        if (abs(endX - startX) < touchSlop + 12f && abs(endY - startY) < touchSlop + 12f) {
+            isScrollStrokeActive = false
+            return
+        }
+
+        isScrollStrokeActive = true
+        val path = Path().apply {
+            moveTo(startX, startY)
+            lineTo(endX, endY)
+        }
+        val stroke = GestureDescription.StrokeDescription(path, 0, 90)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+
+        val dispatched = dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                mainHandler.post {
+                    isScrollStrokeActive = false
+                    if (abs(pendingScrollDx) >= 1f || abs(pendingScrollDy) >= 1f) {
+                        dispatchNextScrollStroke()
+                    }
+                }
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                mainHandler.post {
+                    isScrollStrokeActive = false
+                    pendingScrollDx = 0f
+                    pendingScrollDy = 0f
+                }
+            }
+        }, null)
+
+        if (!dispatched) {
+            isScrollStrokeActive = false
         }
     }
 
