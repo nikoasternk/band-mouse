@@ -17,13 +17,26 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import org.json.JSONTokener
 
-class WearableMouseClient(context: Context, unusedScope: CoroutineScope) {
+class WearableMouseClient private constructor(context: Context) {
+
+    companion object {
+        @Volatile
+        private var INSTANCE: WearableMouseClient? = null
+
+        fun getInstance(context: Context): WearableMouseClient {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: WearableMouseClient(context.applicationContext).also { INSTANCE = it }
+            }
+        }
+    }
+
     private val appContext = context.applicationContext
     private val clientScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val nodeApi = Wearable.getNodeApi(appContext)
     private val authApi = Wearable.getAuthApi(appContext)
     private val messageApi = Wearable.getMessageApi(appContext)
     private var activeNode: Node? = null
+    private var isListenerRegistered = false
     private var handshakeDeferred: CompletableDeferred<Boolean>? = null
 
     private val messageListener = OnMessageReceivedListener { _, bytes ->
@@ -45,13 +58,29 @@ class WearableMouseClient(context: Context, unusedScope: CoroutineScope) {
                         "tap" -> {
                             MouseAccessibilityService.instance?.performClick()
                         }
-                        "back" -> {
-                            MouseAccessibilityService.instance?.performBack()
-                        }
                         "s" -> {
                             val dx = packet.optInt("dx", 0)
                             val dy = packet.optInt("dy", 0)
                             MouseAccessibilityService.instance?.performScroll(dx, dy)
+                        }
+                        "back" -> {
+                            MouseAccessibilityService.instance?.performBack()
+                        }
+                        "home" -> {
+                            MouseAccessibilityService.instance?.performHome()
+                        }
+                        "recents" -> {
+                            MouseAccessibilityService.instance?.performRecents()
+                        }
+                        "stealth" -> {
+                            MouseAccessibilityService.instance?.toggleStealthMode()
+                        }
+                        "ping" -> {
+                            MouseAccessibilityService.instance?.onWatchHeartbeat()
+                        }
+                        "state" -> {
+                            val isOpen = packet.optBoolean("open", false)
+                            MouseAccessibilityService.instance?.onWatchStateChanged(isOpen)
                         }
                     }
                 }
@@ -59,6 +88,7 @@ class WearableMouseClient(context: Context, unusedScope: CoroutineScope) {
                     val step = packet.optInt("step", 0)
                     if (step > 0) {
                         handshakeDeferred?.complete(true)
+                        MouseAccessibilityService.instance?.onWatchStateChanged(true)
                     }
                     if (step < 2) {
                         val reply = JSONObject().put("tag", "handshake").put("step", step + 1).toString()
@@ -67,6 +97,17 @@ class WearableMouseClient(context: Context, unusedScope: CoroutineScope) {
                 }
             }
         } catch (_: Exception) {}
+    }
+
+    fun ensureListening() {
+        clientScope.launch {
+            val conn = queryConnectedBand()
+            val node = activeNode
+            if (conn.isSuccess && node != null && !isListenerRegistered) {
+                unregisterListener(node.id)
+                isListenerRegistered = registerListener(node.id)
+            }
+        }
     }
 
     suspend fun queryConnectedBand(): Result<String> {
@@ -146,7 +187,8 @@ class WearableMouseClient(context: Context, unusedScope: CoroutineScope) {
             val nodeId = activeNode!!.id
             val bandName = connection.getOrNull() ?: "Band 10"
             unregisterListener(nodeId)
-            if (!registerListener(nodeId)) {
+            isListenerRegistered = registerListener(nodeId)
+            if (!isListenerRegistered) {
                 withContext(Dispatchers.Main) { onError() }
                 return@launch
             }
@@ -169,6 +211,7 @@ class WearableMouseClient(context: Context, unusedScope: CoroutineScope) {
 
             withContext(Dispatchers.Main) {
                 if (connected) {
+                    MouseAccessibilityService.instance?.onWatchStateChanged(true)
                     onConnected(bandName)
                 } else {
                     onError()
