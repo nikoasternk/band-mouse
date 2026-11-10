@@ -5,30 +5,44 @@
       class="full-touchpad"
       @touchstart="onTouchStart"
       @touchmove="onTouchMove"
-      @touchend="onTouchEnd">
+      @touchend="onTouchEnd"
+      @touchcancel="onTouchCancel">
     </div>
 
-    <!-- Маленькая кнопка выхода в меню в самом верху посередине -->
-    <div class="top-menu-btn" @click="openMenu">
-      <text class="top-menu-txt">{{strings.menuTopBtn}}</text>
+    <!-- Кнопка выхода в меню (динамический размер из настроек) -->
+    <div
+      class="top-menu-btn"
+      style="top: 12px; left: {{menuLeft}}px; width: {{menuW}}px; height: {{menuH}}px; border-radius: {{menuRadius}}px;"
+      @click="openMenu">
+      <text class="top-menu-txt" style="font-size: {{menuFont}}px;">{{strings.menuTopBtn}}</text>
     </div>
 
-    <!-- 3 небольшие кнопки панели телефона (треугольник, круг, квадрат) чуть ниже кнопки меню -->
-    <div class="phone-nav-bar" if="{{showNavBar}}">
-      <div class="nav-btn" @click="onTriangleTap">
-        <text class="nav-txt">◀</text>
-      </div>
-
-      <div class="nav-btn" @click="onCircleTap">
-        <text class="nav-txt">●</text>
+    <!-- 3 кнопки панели телефона (динамический размер и мягкая вибрация) -->
+    <div
+      class="phone-nav-bar"
+      if="{{showNavBar}}"
+      style="top: {{navTop}}px; left: {{navLeft}}px; width: {{navRowW}}px; height: {{navBtnH}}px;">
+      <div
+        class="nav-btn"
+        style="width: {{navBtnW}}px; height: {{navBtnH}}px; border-radius: {{navBtnRadius}}px;"
+        @click="onTriangleTap">
+        <text class="nav-txt" style="font-size: {{navFont}}px;">◀</text>
       </div>
 
       <div
         class="nav-btn"
+        style="width: {{navBtnW}}px; height: {{navBtnH}}px; border-radius: {{navBtnRadius}}px;"
+        @click="onCircleTap">
+        <text class="nav-txt" style="font-size: {{navFont}}px;">●</text>
+      </div>
+
+      <div
+        class="nav-btn"
+        style="width: {{navBtnW}}px; height: {{navBtnH}}px; border-radius: {{navBtnRadius}}px;"
         @touchstart="onSquareTouchStart"
         @touchend="onSquareTouchEnd"
         @touchcancel="onSquareTouchCancel">
-        <text class="nav-txt">■</text>
+        <text class="nav-txt" style="font-size: {{navFont}}px;">■</text>
       </div>
     </div>
   </div>
@@ -36,22 +50,42 @@
 
 <script>
 import router from '@system.router'
-import vibrator from '@system.vibrator'
 import { getStrings } from '../../services/Localization'
 
 export default {
   private: {
     strings: getStrings('auto'),
-    isScrollMode: false,
+    controlMode: 'cursor',
+    activeGestureMode: 'cursor',
+    tapLockPx: 4,
+    hybridHoldMs: 400,
     showNavBar: true,
     stealthOnSquare: true,
+    stealthHoldSec: 3,
+
+    menuW: 88,
+    menuH: 32,
+    menuLeft: 62,
+    menuRadius: 16,
+    menuFont: 16,
+
+    navTop: 50,
+    navLeft: 24,
+    navRowW: 164,
+    navBtnW: 50,
+    navBtnH: 38,
+    navBtnRadius: 14,
+    navFont: 17,
+
     lastX: 0,
     lastY: 0,
     startTime: 0,
     totalMoved: 0,
+    isMoveUnlocked: false,
     bucketX: 0,
     bucketY: 0,
     flushTimer: null,
+    hybridHoldTimer: null,
     squareHoldTimer: null,
     squareLongTriggered: false
   },
@@ -61,38 +95,48 @@ export default {
       if (this.bucketX !== 0 || this.bucketY !== 0) {
         const dx = Math.round(this.bucketX);
         const dy = Math.round(this.bucketY);
-        this.bucketX = 0;
-        this.bucketY = 0;
 
-        if ((dx !== 0 || dy !== 0) && globalThis.wearableBridge) {
-          globalThis.wearableBridge.sendPacket({
-            tag: 'mouse',
-            act: this.isScrollMode ? 's' : 'm',
-            dx: dx,
-            dy: dy
-          });
+        if (dx !== 0 || dy !== 0) {
+          this.bucketX -= dx;
+          this.bucketY -= dy;
+
+          if (globalThis.wearableBridge) {
+            const actType = this.activeGestureMode === 'scroll' ? 's' : 'm';
+            globalThis.wearableBridge.sendPacket({
+              tag: 'mouse',
+              act: actType,
+              dx: dx,
+              dy: dy
+            });
+          }
         }
       }
-    }, 38);
+    }, 30);
   },
 
   onShow() {
     globalThis.notifyPageShown();
     globalThis.loadMouseConfig((cfg) => {
       this.strings = getStrings(cfg.language || 'auto');
-      this.isScrollMode = cfg.controlMode === 'scroll';
+      this.controlMode = cfg.controlMode || 'cursor';
+      this.tapLockPx = cfg.tapLockPx !== undefined ? cfg.tapLockPx : 4;
+      this.hybridHoldMs = cfg.hybridHoldMs || 400;
       this.showNavBar = cfg.showNavBar !== false;
       this.stealthOnSquare = cfg.stealthOnSquare !== false;
+      this.stealthHoldSec = cfg.stealthHoldSec || 3;
+      this.computeLayoutMetrics(cfg.menuBtnScale || 100, cfg.navBarScale || 100);
     });
   },
 
   onHide() {
     this.clearSquareTimer();
+    this.clearHybridTimer();
     globalThis.notifyPageHidden();
   },
 
   onDestroy() {
     this.clearSquareTimer();
+    this.clearHybridTimer();
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
     }
@@ -100,6 +144,24 @@ export default {
 
   onBackPress() {
     return true;
+  },
+
+  computeLayoutMetrics(menuScalePct, navScalePct) {
+    const mScale = Math.max(0.7, Math.min(1.4, menuScalePct / 100));
+    this.menuW = Math.round(88 * mScale);
+    this.menuH = Math.round(32 * mScale);
+    this.menuLeft = Math.round((212 - this.menuW) / 2);
+    this.menuRadius = Math.round(this.menuH / 2);
+    this.menuFont = Math.max(11, Math.round(16 * mScale));
+
+    const nScale = Math.max(0.7, Math.min(1.3, navScalePct / 100));
+    this.navBtnW = Math.round(50 * nScale);
+    this.navBtnH = Math.round(38 * nScale);
+    this.navRowW = Math.min(204, Math.round(164 * nScale));
+    this.navLeft = Math.round((212 - this.navRowW) / 2);
+    this.navTop = 12 + this.menuH + 6;
+    this.navBtnRadius = Math.round(14 * nScale);
+    this.navFont = Math.max(12, Math.round(17 * nScale));
   },
 
   extractPoint(e) {
@@ -121,6 +183,26 @@ export default {
     this.lastY = pt.y;
     this.startTime = Date.now();
     this.totalMoved = 0;
+    this.bucketX = 0;
+    this.bucketY = 0;
+    this.isMoveUnlocked = this.tapLockPx <= 0;
+    this.clearHybridTimer();
+
+    if (this.controlMode === 'scroll') {
+      this.activeGestureMode = 'scroll';
+    } else if (this.controlMode === 'hybrid') {
+      this.activeGestureMode = 'cursor';
+      this.hybridHoldTimer = setTimeout(() => {
+        this.hybridHoldTimer = null;
+        if (!this.isMoveUnlocked || this.totalMoved < Math.max(6, this.tapLockPx + 2)) {
+          this.activeGestureMode = 'scroll';
+          this.isMoveUnlocked = true;
+          globalThis.triggerHaptic('soft');
+        }
+      }, this.hybridHoldMs);
+    } else {
+      this.activeGestureMode = 'cursor';
+    }
   },
 
   onTouchMove(e) {
@@ -133,14 +215,37 @@ export default {
     this.lastY = pt.y;
 
     this.totalMoved += Math.abs(dx) + Math.abs(dy);
+
+    if (!this.isMoveUnlocked) {
+      if (this.totalMoved < this.tapLockPx) {
+        return;
+      }
+      this.isMoveUnlocked = true;
+      // Если в режиме Гибрид пользователь сразу начал двигать палец до таймера — остаёмся в режиме курсора
+      if (this.hybridHoldTimer) {
+        this.clearHybridTimer();
+      }
+    }
+
     this.bucketX += dx;
     this.bucketY += dy;
   },
 
   onTouchEnd() {
+    this.clearHybridTimer();
     const elapsed = Date.now() - this.startTime;
-    if (elapsed < 230 && this.totalMoved < 14) {
-      this.shortVibrate();
+
+    // В режиме скролла (или после срабатывания гибридного скролла) клик полностью отключён!
+    if (this.activeGestureMode === 'scroll' || this.controlMode === 'scroll') {
+      this.bucketX = 0;
+      this.bucketY = 0;
+      return;
+    }
+
+    if (elapsed < 240 && this.totalMoved <= Math.max(3, this.tapLockPx)) {
+      this.bucketX = 0;
+      this.bucketY = 0;
+      globalThis.triggerHaptic('short');
       if (globalThis.wearableBridge) {
         globalThis.wearableBridge.sendPacket({
           tag: 'mouse',
@@ -150,20 +255,33 @@ export default {
     }
   },
 
+  onTouchCancel() {
+    this.clearHybridTimer();
+    this.bucketX = 0;
+    this.bucketY = 0;
+  },
+
+  clearHybridTimer() {
+    if (this.hybridHoldTimer) {
+      clearTimeout(this.hybridHoldTimer);
+      this.hybridHoldTimer = null;
+    }
+  },
+
   openMenu() {
-    this.shortVibrate();
+    globalThis.triggerHaptic('soft');
     router.push({ uri: 'pages/menu' });
   },
 
   onTriangleTap() {
-    this.shortVibrate();
+    globalThis.triggerHaptic('soft');
     if (globalThis.wearableBridge) {
       globalThis.wearableBridge.sendPacket({ tag: 'mouse', act: 'back' });
     }
   },
 
   onCircleTap() {
-    this.shortVibrate();
+    globalThis.triggerHaptic('soft');
     if (globalThis.wearableBridge) {
       globalThis.wearableBridge.sendPacket({ tag: 'mouse', act: 'home' });
     }
@@ -172,15 +290,17 @@ export default {
   onSquareTouchStart() {
     this.clearSquareTimer();
     this.squareLongTriggered = false;
+    globalThis.triggerHaptic('soft');
     if (this.stealthOnSquare) {
+      const holdMs = Math.max(1, Math.min(5, this.stealthHoldSec || 3)) * 1000;
       this.squareHoldTimer = setTimeout(() => {
         this.squareHoldTimer = null;
         this.squareLongTriggered = true;
-        this.longVibrate();
+        globalThis.triggerHaptic('long');
         if (globalThis.wearableBridge) {
           globalThis.wearableBridge.sendPacket({ tag: 'mouse', act: 'stealth' });
         }
-      }, 3000);
+      }, holdMs);
     }
   },
 
@@ -188,7 +308,6 @@ export default {
     const wasHeld = this.squareLongTriggered;
     this.clearSquareTimer();
     if (!wasHeld) {
-      this.shortVibrate();
       if (globalThis.wearableBridge) {
         globalThis.wearableBridge.sendPacket({ tag: 'mouse', act: 'recents' });
       }
@@ -204,14 +323,6 @@ export default {
       clearTimeout(this.squareHoldTimer);
       this.squareHoldTimer = null;
     }
-  },
-
-  shortVibrate() {
-    try { vibrator.vibrate({ mode: 'short' }); } catch (e) {}
-  },
-
-  longVibrate() {
-    try { vibrator.vibrate({ mode: 'long' }); } catch (e) { this.shortVibrate(); }
   }
 }
 </script>
@@ -235,45 +346,33 @@ export default {
 
 .top-menu-btn {
   position: absolute;
-  top: 12px;
-  left: 62px;
-  width: 88px;
-  height: 32px;
   background-color: #242424;
-  border-radius: 16px;
   justify-content: center;
   align-items: center;
 }
 
 .top-menu-txt {
   color: #DDDDDD;
-  font-size: 16px;
   font-weight: bold;
+  lines: 1;
 }
 
 .phone-nav-bar {
   position: absolute;
-  top: 50px;
-  left: 24px;
-  width: 164px;
-  height: 38px;
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
 }
 
 .nav-btn {
-  width: 50px;
-  height: 38px;
   background-color: #202020;
-  border-radius: 14px;
   justify-content: center;
   align-items: center;
 }
 
 .nav-txt {
   color: #FFFFFF;
-  font-size: 17px;
   font-weight: bold;
+  lines: 1;
 }
 </style>
