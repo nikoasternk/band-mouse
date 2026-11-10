@@ -11,7 +11,6 @@
         <text class="{{hasUnsavedChanges ? 'save-btn-txt-active' : 'save-btn-txt'}}" style="font-size: {{saveBtnFont}}px;">{{justSaved ? strings.savedStatus : strings.saveSettings}}</text>
       </div>
 
-      <!-- Язык -->
       <div class="card">
         <text class="card-title" style="font-size: {{langTitleFont}}px;">{{strings.language}}</text>
         <div class="toggle-btn toggle-on" @click="cycleLanguage">
@@ -19,7 +18,6 @@
         </div>
       </div>
 
-      <!-- Вибрация -->
       <div class="card">
         <text class="card-title" style="font-size: {{vibTitleFont}}px;">{{strings.vibrationTitle}}</text>
         <div class="toggle-btn {{vibration ? 'toggle-on' : 'toggle-off'}}" @click="toggleVibration">
@@ -27,7 +25,6 @@
         </div>
       </div>
 
-      <!-- Стабилизация клика (в пикселях) -->
       <div class="card">
         <text class="card-title" style="font-size: {{tapLockTitleFont}}px;">{{strings.tapLockTitle}}</text>
         <div class="ctrl-row">
@@ -41,7 +38,6 @@
         </div>
       </div>
 
-      <!-- Время удержания для Гибридного режима (мс) -->
       <div class="card">
         <text class="card-title" style="font-size: {{hybridHoldTitleFont}}px;">{{strings.hybridHoldTitle}}</text>
         <div class="ctrl-row">
@@ -55,7 +51,6 @@
         </div>
       </div>
 
-      <!-- Размер кнопки Меню -->
       <div class="card">
         <text class="card-title" style="font-size: {{menuSizeTitleFont}}px;">{{strings.menuSizeTitle}}</text>
         <div class="ctrl-row">
@@ -69,7 +64,6 @@
         </div>
       </div>
 
-      <!-- Панель телефона (ВКЛ/ВЫКЛ) -->
       <div class="card">
         <text class="card-title" style="font-size: {{navTitleFont}}px;">{{strings.navBarTitle}}</text>
         <div class="toggle-btn {{showNavBar ? 'toggle-on' : 'toggle-off'}}" @click="toggleNavBar">
@@ -77,7 +71,6 @@
         </div>
       </div>
 
-      <!-- Размер кнопок панели телефона -->
       <div class="card" if="{{showNavBar}}">
         <text class="card-title" style="font-size: {{navSizeTitleFont}}px;">{{strings.navSizeTitle}}</text>
         <div class="ctrl-row">
@@ -91,7 +84,6 @@
         </div>
       </div>
 
-      <!-- Скрытность на квадратик (ВКЛ/ВЫКЛ) -->
       <div class="card">
         <text class="card-title" style="font-size: {{stealthTitleFont}}px;">{{strings.stealthSquareTitle}}</text>
         <div class="toggle-btn {{stealthOnSquare ? 'toggle-on' : 'toggle-off'}}" @click="toggleStealthSquare">
@@ -99,7 +91,6 @@
         </div>
       </div>
 
-      <!-- Сколько секунд держать квадратик (1..5 сек) -->
       <div class="card" if="{{stealthOnSquare}}">
         <text class="card-title" style="font-size: {{stealthHoldTitleFont}}px;">{{strings.stealthHoldTitle}}</text>
         <div class="ctrl-row">
@@ -113,7 +104,6 @@
         </div>
       </div>
 
-      <!-- Не гасить экран -->
       <div class="card">
         <text class="card-title" style="font-size: {{keepTitleFont}}px;">{{strings.keepScreenOn}}</text>
         <div class="toggle-btn {{stayAwake ? 'toggle-on' : 'toggle-off'}}" @click="toggleStayAwake">
@@ -121,7 +111,6 @@
         </div>
       </div>
 
-      <!-- Своя яркость -->
       <div class="card">
         <text class="card-title" style="font-size: {{customBrTitleFont}}px;">{{strings.customBrightness}}</text>
         <div class="toggle-btn {{customBrightness ? 'toggle-on' : 'toggle-off'}}" @click="toggleCustomBrightness">
@@ -142,7 +131,6 @@
         </div>
       </div>
 
-      <!-- Одиночная кнопка сброса настроек без отдельной вкладки/карточки -->
       <div class="{{confirmReset ? 'reset-single-btn reset-single-active' : 'reset-single-btn'}}" @click="onResetTap">
         <text class="{{confirmReset ? 'reset-single-txt-active' : 'reset-single-txt'}}" style="font-size: {{resetBtnFont}}px;">{{confirmReset ? strings.resetConfirm : strings.resetSettings}}</text>
       </div>
