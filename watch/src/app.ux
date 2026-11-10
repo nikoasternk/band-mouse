@@ -1,7 +1,125 @@
 <script>
 import WearableBridge from './services/WearableBridge'
+import storage from '@system.storage'
+import brightness from '@system.brightness'
+import { pctToHardwareBrightness } from './services/Localization'
 
 globalThis.wearableBridge = new WearableBridge();
 
-export default {}
+globalThis.mouseConfig = {
+  language: 'auto',
+  controlMode: 'cursor',
+  showNavBar: true,
+  stealthOnSquare: true,
+  stayAwake: true,
+  customBrightness: false,
+  brightnessPct: 80
+};
+
+globalThis.applyHardwareDisplay = () => {
+  const cfg = globalThis.mouseConfig;
+  try {
+    if (cfg.customBrightness) {
+      brightness.setMode({ mode: 0 });
+      brightness.setValue({ value: pctToHardwareBrightness(cfg.brightnessPct) });
+    } else {
+      brightness.setMode({ mode: 1 });
+    }
+    brightness.setKeepScreenOn({ keepScreenOn: cfg.stayAwake !== false });
+  } catch (e) {}
+};
+
+globalThis.loadMouseConfig = (onDone) => {
+  storage.get({
+    key: 'BANDMOUSE_CONFIG',
+    success: (data) => {
+      if (data) {
+        try {
+          const parsed = JSON.parse(data);
+          globalThis.mouseConfig = Object.assign({}, globalThis.mouseConfig, parsed);
+        } catch (e) {}
+      }
+      globalThis.applyHardwareDisplay();
+      if (onDone) onDone(globalThis.mouseConfig);
+    },
+    fail: () => {
+      globalThis.applyHardwareDisplay();
+      if (onDone) onDone(globalThis.mouseConfig);
+    }
+  });
+};
+
+globalThis.saveMouseConfig = () => {
+  storage.set({
+    key: 'BANDMOUSE_CONFIG',
+    value: JSON.stringify(globalThis.mouseConfig)
+  });
+};
+
+let hideTimer = null;
+let pingTimer = null;
+
+globalThis.notifyPageShown = () => {
+  if (hideTimer) {
+    clearTimeout(hideTimer);
+    hideTimer = null;
+  }
+  globalThis.applyHardwareDisplay();
+  if (globalThis.wearableBridge) {
+    globalThis.wearableBridge.sendPacket({ tag: 'mouse', act: 'state', open: true });
+  }
+  if (!pingTimer) {
+    pingTimer = setInterval(() => {
+      if (globalThis.mouseConfig.stayAwake !== false) {
+        try { brightness.setKeepScreenOn({ keepScreenOn: true }); } catch (e) {}
+      }
+      if (globalThis.wearableBridge) {
+        globalThis.wearableBridge.sendPacket({ tag: 'mouse', act: 'ping' });
+      }
+    }, 2000);
+  }
+};
+
+globalThis.notifyPageHidden = () => {
+  if (hideTimer) clearTimeout(hideTimer);
+  hideTimer = setTimeout(() => {
+    if (pingTimer) {
+      clearInterval(pingTimer);
+      pingTimer = null;
+    }
+    try { brightness.setKeepScreenOn({ keepScreenOn: false }); } catch (e) {}
+    if (globalThis.wearableBridge) {
+      globalThis.wearableBridge.sendPacket({ tag: 'mouse', act: 'state', open: false });
+    }
+  }, 450);
+};
+
+globalThis.forceCloseWatchApp = (appInstance) => {
+  if (hideTimer) clearTimeout(hideTimer);
+  if (pingTimer) {
+    clearInterval(pingTimer);
+    pingTimer = null;
+  }
+  try { brightness.setKeepScreenOn({ keepScreenOn: false }); } catch (e) {}
+  if (globalThis.wearableBridge) {
+    globalThis.wearableBridge.sendPacket({ tag: 'mouse', act: 'state', open: false });
+  }
+  setTimeout(() => {
+    if (appInstance && appInstance.exit) {
+      appInstance.exit();
+    }
+  }, 80);
+};
+
+export default {
+  onCreate() {
+    globalThis.loadMouseConfig();
+  },
+  onDestroy() {
+    if (pingTimer) clearInterval(pingTimer);
+    if (globalThis.wearableBridge) {
+      globalThis.wearableBridge.sendPacket({ tag: 'mouse', act: 'state', open: false });
+    }
+  }
+}
 </script>
