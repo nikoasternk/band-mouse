@@ -1,12 +1,11 @@
 name: Build and Release Band Mouse
 
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - 'v*'
   workflow_dispatch:
+
+concurrency:
+  group: bandmouse-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-deploy:
@@ -82,7 +81,7 @@ jobs:
         with:
           tag_name: "v1.0.${{ github.run_number }}"
           name: "Band Mouse v1.0.${{ github.run_number }}"
-          body: "Automated build #${{ github.run_number }}."
+          body: "Manual build #${{ github.run_number }}."
           files: |
             dist/bandmouse-watch.rpk
             dist/bandmouse-phone.apk
