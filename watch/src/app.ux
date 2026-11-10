@@ -2,6 +2,7 @@
 import WearableBridge from './services/WearableBridge'
 import storage from '@system.storage'
 import brightness from '@system.brightness'
+import vibrator from '@system.vibrator'
 import { pctToHardwareBrightness } from './services/Localization'
 
 globalThis.wearableBridge = new WearableBridge();
@@ -9,11 +10,43 @@ globalThis.wearableBridge = new WearableBridge();
 globalThis.mouseConfig = {
   language: 'auto',
   controlMode: 'cursor',
+  vibration: true,
+  tapLockPx: 4,
+  hybridHoldMs: 400,
+  menuBtnScale: 100,
   showNavBar: true,
+  navBarScale: 100,
   stealthOnSquare: true,
+  stealthHoldSec: 3,
   stayAwake: true,
   customBrightness: false,
   brightnessPct: 80
+};
+
+globalThis.triggerHaptic = (type) => {
+  if (!globalThis.mouseConfig || globalThis.mouseConfig.vibration === false) {
+    return;
+  }
+  try {
+    if (type === 'soft') {
+      if (vibrator.start) {
+        vibrator.start({
+          duration: 15,
+          interval: 10,
+          count: 1,
+          fail: () => {
+            vibrator.vibrate({ mode: 'short' });
+          }
+        });
+      } else {
+        vibrator.vibrate({ mode: 'short' });
+      }
+    } else if (type === 'long') {
+      vibrator.vibrate({ mode: 'long' });
+    } else {
+      vibrator.vibrate({ mode: 'short' });
+    }
+  } catch (e) {}
 };
 
 globalThis.applyHardwareDisplay = () => {
