@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Band Mouse</string>
+    <string name="device_status">Связь с часами</string>
+    <string name="status_checking">Подключение к часам...</string>
+    <string name="status_connected">Подключено: %1$s</string>
+    <string name="status_disconnected">Нет связи (откройте Mi Fitness)</string>
+    <string name="service_title">Служба курсора (Спецвозможности)</string>
+    <string name="service_on">Включена (Курсор на экране)</string>
+    <string name="service_off">Выключена (Включите Band Mouse)</string>
+    <string name="btn_open_accessibility">Открыть Спецвозможности</string>
+    <string name="btn_launch_watch">Подключить и открыть тачпад</string>
+    <string name="label_sensitivity">Скорость курсора: %1$sx</string>
+    <string name="label_scroll_speed">Скорость скролла: %1$sx</string>
+    <string name="toast_ready">Тачпад запущен на Band 10!</string>
+</resources>

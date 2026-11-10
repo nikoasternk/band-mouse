@@ -1,0 +1,12 @@
+{
+  "name": "band-mouse-watch",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "aiot build --enable-custom-component",
+    "release": "aiot release --enable-custom-component --enable-jsc"
+  },
+  "devDependencies": {
+    "@aiot-toolkit/jsc": "^1.0.7",
+    "aiot-toolkit": "2.0.5"
+  }
+}

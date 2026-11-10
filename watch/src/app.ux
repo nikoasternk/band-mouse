@@ -1,0 +1,7 @@
+<script>
+import WearableBridge from './services/WearableBridge'
+
+globalThis.wearableBridge = new WearableBridge();
+
+export default {}
+</script>
