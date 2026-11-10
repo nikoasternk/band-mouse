@@ -15,12 +15,13 @@ import android.provider.Settings
 import android.view.Choreographer
 import android.view.Gravity
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import com.band.mouse.transport.WearableMouseClient
 import kotlin.math.abs
-import kotlin.math.hypot
 import kotlin.math.roundToInt
+import kotlin.math.sign
 
 class MouseAccessibilityService : AccessibilityService() {
 
@@ -57,6 +58,10 @@ class MouseAccessibilityService : AccessibilityService() {
     private var targetX = 500f
     private var targetY = 1000f
     private var isAnimatingCursor = false
+
+    private var pendingScrollDx = 0f
+    private var pendingScrollDy = 0f
+    private var isScrollStrokeActive = false
 
     private var screenWidth = 1080
     private var screenHeight = 2400
@@ -228,6 +233,9 @@ class MouseAccessibilityService : AccessibilityService() {
         mainHandler.removeCallbacks(watchTimeoutRunnable)
         mainHandler.post {
             isAnimatingCursor = false
+            isScrollStrokeActive = false
+            pendingScrollDx = 0f
+            pendingScrollDy = 0f
             Choreographer.getInstance().removeFrameCallback(frameCallback)
             cursorView?.let {
                 try { windowManager?.removeView(it) } catch (_: Exception) {}
@@ -284,6 +292,9 @@ class MouseAccessibilityService : AccessibilityService() {
             isStealthActive = active
 
             if (active) {
+                isScrollStrokeActive = false
+                pendingScrollDx = 0f
+                pendingScrollDy = 0f
                 cursorView?.visibility = View.GONE
                 stealthView?.visibility = View.VISIBLE
                 try {
@@ -433,24 +444,88 @@ class MouseAccessibilityService : AccessibilityService() {
         if (!isServiceMasterEnabled || isStealthActive) return
         onWatchHeartbeat()
         mainHandler.post {
-            val metrics = resources.displayMetrics
-            screenWidth = metrics.widthPixels
-            screenHeight = metrics.heightPixels
-
-            val startX = targetX.coerceIn(100f, (screenWidth - 100).toFloat())
-            val startY = targetY.coerceIn(200f, (screenHeight - 200).toFloat())
-            val endX = (startX + dx * scrollMultiplier).coerceIn(50f, (screenWidth - 50).toFloat())
-            val endY = (startY + dy * scrollMultiplier).coerceIn(100f, (screenHeight - 100).toFloat())
-
-            if (hypot(endX - startX, endY - startY) < 25f) return@post
-
-            val path = Path().apply {
-                moveTo(startX, startY)
-                lineTo(endX, endY)
+            if (pendingScrollDy != 0f && dy != 0 && sign(pendingScrollDy) != sign(dy.toFloat()) && abs(dy) <= 2) {
+                return@post
             }
-            val stroke = GestureDescription.StrokeDescription(path, 0, 130)
-            val gesture = GestureDescription.Builder().addStroke(stroke).build()
-            dispatchGesture(gesture, null, null)
+            if (pendingScrollDx != 0f && dx != 0 && sign(pendingScrollDx) != sign(dx.toFloat()) && abs(dx) <= 2) {
+                return@post
+            }
+            pendingScrollDx += dx
+            pendingScrollDy += dy
+            if (!isScrollStrokeActive) {
+                dispatchNextScrollStroke()
+            }
+        }
+    }
+
+    private fun dispatchNextScrollStroke() {
+        if (abs(pendingScrollDx) < 1f && abs(pendingScrollDy) < 1f) {
+            pendingScrollDx = 0f
+            pendingScrollDy = 0f
+            isScrollStrokeActive = false
+            return
+        }
+
+        val rawDx = pendingScrollDx
+        val rawDy = pendingScrollDy
+        pendingScrollDx = 0f
+        pendingScrollDy = 0f
+
+        val metrics = resources.displayMetrics
+        screenWidth = metrics.widthPixels
+        screenHeight = metrics.heightPixels
+
+        val touchSlop = ViewConfiguration.get(this).scaledTouchSlop.toFloat().coerceIn(18f, 28f)
+
+        var moveX = 0f
+        var moveY = 0f
+
+        if (abs(rawDy) >= abs(rawDx)) {
+            moveY = sign(rawDy) * touchSlop + rawDy * scrollMultiplier
+        } else {
+            moveX = sign(rawDx) * touchSlop + rawDx * scrollMultiplier
+        }
+
+        val startX = targetX.coerceIn(screenWidth * 0.2f, screenWidth * 0.8f)
+        val startY = targetY.coerceIn(screenHeight * 0.28f, screenHeight * 0.72f)
+
+        val endX = (startX + moveX).coerceIn(50f, (screenWidth - 50).toFloat())
+        val endY = (startY + moveY).coerceIn(100f, (screenHeight - 100).toFloat())
+
+        if (abs(endX - startX) < touchSlop + 4f && abs(endY - startY) < touchSlop + 4f) {
+            isScrollStrokeActive = false
+            return
+        }
+
+        isScrollStrokeActive = true
+        val path = Path().apply {
+            moveTo(startX, startY)
+            lineTo(endX, endY)
+        }
+        val stroke = GestureDescription.StrokeDescription(path, 0, 85)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+
+        val dispatched = dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                mainHandler.post {
+                    isScrollStrokeActive = false
+                    if (abs(pendingScrollDx) >= 1f || abs(pendingScrollDy) >= 1f) {
+                        dispatchNextScrollStroke()
+                    }
+                }
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                mainHandler.post {
+                    isScrollStrokeActive = false
+                    pendingScrollDx = 0f
+                    pendingScrollDy = 0f
+                }
+            }
+        }, null)
+
+        if (!dispatched) {
+            isScrollStrokeActive = false
         }
     }
 
