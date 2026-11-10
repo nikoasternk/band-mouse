@@ -23,28 +23,28 @@ globalThis.mouseConfig = {
   brightnessPct: 80
 };
 
-globalThis.triggerHaptic = (type) => {
+globalThis.triggerHaptic = () => {
   if (!globalThis.mouseConfig || globalThis.mouseConfig.vibration === false) {
     return;
   }
   try {
-    if (type === 'soft') {
-      if (vibrator.start) {
-        vibrator.start({
-          duration: 15,
-          interval: 10,
-          count: 1,
-          fail: () => {
-            vibrator.vibrate({ mode: 'short' });
-          }
-        });
-      } else {
-        vibrator.vibrate({ mode: 'short' });
-      }
-    } else if (type === 'long') {
-      vibrator.vibrate({ mode: 'long' });
+    if (vibrator.start) {
+      vibrator.start({
+        duration: 10,
+        interval: 5,
+        count: 1,
+        fail: () => {
+          vibrator.vibrate({ mode: 'short' });
+          setTimeout(() => {
+            try { if (vibrator.stop) vibrator.stop(); } catch (e) {}
+          }, 12);
+        }
+      });
     } else {
       vibrator.vibrate({ mode: 'short' });
+      setTimeout(() => {
+        try { if (vibrator.stop) vibrator.stop(); } catch (e) {}
+      }, 12);
     }
   } catch (e) {}
 };
