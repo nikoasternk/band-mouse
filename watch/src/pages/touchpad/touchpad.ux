@@ -1,46 +1,50 @@
 <template>
-  <div class="mouse-page">
-    <div class="top-spacer"></div>
-
-    <div class="top-row">
-      <div class="back-btn" @click="sendAndroidBack">
-        <text class="back-txt">{{strings.backBtn}}</text>
-      </div>
-      <div class="exit-btn" @click="exitApp">
-        <text class="exit-txt">✕</text>
-      </div>
-    </div>
-
-    <text class="status-line">{{debugText}}</text>
-
-    <!-- Чистая зона тачпада без вложенных элементов -->
+  <div class="pad-screen">
+    <!-- Весь экран 212x520 работает как единый тачпад -->
     <div
-      class="touchpad-box"
+      class="full-touchpad"
       @touchstart="onTouchStart"
       @touchmove="onTouchMove"
       @touchend="onTouchEnd">
     </div>
 
-    <div class="{{isScrollMode ? 'mode-btn mode-scroll' : 'mode-btn mode-cursor'}}" @click="toggleMode">
-      <text class="{{isScrollMode ? 'mode-txt-scroll' : 'mode-txt-cursor'}}">{{isScrollMode ? strings.modeScroll : strings.modeCursor}}</text>
+    <!-- Маленькая кнопка выхода в меню в самом верху посередине -->
+    <div class="top-menu-btn" @click="openMenu">
+      <text class="top-menu-txt">{{strings.menuTopBtn}}</text>
     </div>
 
-    <div class="bottom-spacer"></div>
+    <!-- 3 небольшие кнопки панели телефона (треугольник, круг, квадрат) чуть ниже кнопки меню -->
+    <div class="phone-nav-bar" if="{{showNavBar}}">
+      <div class="nav-btn" @click="onTriangleTap">
+        <text class="nav-txt">◀</text>
+      </div>
+
+      <div class="nav-btn" @click="onCircleTap">
+        <text class="nav-txt">●</text>
+      </div>
+
+      <div
+        class="nav-btn"
+        @touchstart="onSquareTouchStart"
+        @touchend="onSquareTouchEnd"
+        @touchcancel="onSquareTouchCancel">
+        <text class="nav-txt">■</text>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
-import brightness from '@system.brightness'
+import router from '@system.router'
 import vibrator from '@system.vibrator'
 import { getStrings } from '../../services/Localization'
 
 export default {
   private: {
-    strings: getStrings(),
-    isConnected: false,
+    strings: getStrings('auto'),
     isScrollMode: false,
-    allowExit: false,
-    debugText: 'Тачпад',
+    showNavBar: true,
+    stealthOnSquare: true,
     lastX: 0,
     lastY: 0,
     startTime: 0,
@@ -48,23 +52,11 @@ export default {
     bucketX: 0,
     bucketY: 0,
     flushTimer: null,
-    statusSub: null
+    squareHoldTimer: null,
+    squareLongTriggered: false
   },
 
   onInit() {
-    this.strings = getStrings();
-    this.debugText = this.strings.ready;
-
-    if (globalThis.wearableBridge) {
-      this.statusSub = globalThis.wearableBridge.addStatusListener((status) => {
-        if (status === 'connected') {
-          this.isConnected = true;
-          this.debugText = this.strings.connected;
-          this.shortVibrate();
-        }
-      });
-    }
-
     this.flushTimer = setInterval(() => {
       if (this.bucketX !== 0 || this.bucketY !== 0) {
         const dx = Math.round(this.bucketX);
@@ -81,37 +73,32 @@ export default {
           });
         }
       }
-    }, 40);
+    }, 38);
   },
 
   onShow() {
-    try {
-      brightness.setKeepScreenOn({ keepScreenOn: true });
-    } catch (e) {}
+    globalThis.notifyPageShown();
+    globalThis.loadMouseConfig((cfg) => {
+      this.strings = getStrings(cfg.language || 'auto');
+      this.isScrollMode = cfg.controlMode === 'scroll';
+      this.showNavBar = cfg.showNavBar !== false;
+      this.stealthOnSquare = cfg.stealthOnSquare !== false;
+    });
   },
 
   onHide() {
-    try {
-      brightness.setKeepScreenOn({ keepScreenOn: false });
-    } catch (e) {}
+    this.clearSquareTimer();
+    globalThis.notifyPageHidden();
   },
 
   onDestroy() {
+    this.clearSquareTimer();
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
     }
-    if (this.statusSub && globalThis.wearableBridge) {
-      globalThis.wearableBridge.removeStatusListener(this.statusSub);
-    }
-    try {
-      brightness.setKeepScreenOn({ keepScreenOn: false });
-    } catch (e) {}
   },
 
   onBackPress() {
-    if (this.allowExit) {
-      return false;
-    }
     return true;
   },
 
@@ -148,15 +135,12 @@ export default {
     this.totalMoved += Math.abs(dx) + Math.abs(dy);
     this.bucketX += dx;
     this.bucketY += dy;
-
-    this.debugText = 'X:' + Math.round(pt.x) + ' Y:' + Math.round(pt.y);
   },
 
   onTouchEnd() {
     const elapsed = Date.now() - this.startTime;
-    if (elapsed < 240 && this.totalMoved < 14) {
+    if (elapsed < 230 && this.totalMoved < 14) {
       this.shortVibrate();
-      this.debugText = 'КЛИК (Tap)';
       if (globalThis.wearableBridge) {
         globalThis.wearableBridge.sendPacket({
           tag: 'mouse',
@@ -166,146 +150,130 @@ export default {
     }
   },
 
-  toggleMode() {
-    this.isScrollMode = !this.isScrollMode;
-    this.debugText = this.isScrollMode ? this.strings.hintScroll : this.strings.hintCursor;
+  openMenu() {
     this.shortVibrate();
+    router.push({ uri: 'pages/menu' });
   },
 
-  sendAndroidBack() {
+  onTriangleTap() {
     this.shortVibrate();
-    this.debugText = '◄ Назад';
     if (globalThis.wearableBridge) {
-      globalThis.wearableBridge.sendPacket({
-        tag: 'mouse',
-        act: 'back'
-      });
+      globalThis.wearableBridge.sendPacket({ tag: 'mouse', act: 'back' });
     }
   },
 
-  exitApp() {
-    this.allowExit = true;
-    this.$app.exit();
+  onCircleTap() {
+    this.shortVibrate();
+    if (globalThis.wearableBridge) {
+      globalThis.wearableBridge.sendPacket({ tag: 'mouse', act: 'home' });
+    }
+  },
+
+  onSquareTouchStart() {
+    this.clearSquareTimer();
+    this.squareLongTriggered = false;
+    if (this.stealthOnSquare) {
+      this.squareHoldTimer = setTimeout(() => {
+        this.squareHoldTimer = null;
+        this.squareLongTriggered = true;
+        this.longVibrate();
+        if (globalThis.wearableBridge) {
+          globalThis.wearableBridge.sendPacket({ tag: 'mouse', act: 'stealth' });
+        }
+      }, 3000);
+    }
+  },
+
+  onSquareTouchEnd() {
+    const wasHeld = this.squareLongTriggered;
+    this.clearSquareTimer();
+    if (!wasHeld) {
+      this.shortVibrate();
+      if (globalThis.wearableBridge) {
+        globalThis.wearableBridge.sendPacket({ tag: 'mouse', act: 'recents' });
+      }
+    }
+  },
+
+  onSquareTouchCancel() {
+    this.clearSquareTimer();
+  },
+
+  clearSquareTimer() {
+    if (this.squareHoldTimer) {
+      clearTimeout(this.squareHoldTimer);
+      this.squareHoldTimer = null;
+    }
   },
 
   shortVibrate() {
-    try {
-      vibrator.vibrate({ mode: 'short' });
-    } catch (e) {}
+    try { vibrator.vibrate({ mode: 'short' }); } catch (e) {}
+  },
+
+  longVibrate() {
+    try { vibrator.vibrate({ mode: 'long' }); } catch (e) { this.shortVibrate(); }
   }
 }
 </script>
 
 <style>
-.mouse-page {
+.pad-screen {
+  position: relative;
   width: 212px;
   height: 520px;
   background-color: #000000;
-  flex-direction: column;
+}
+
+.full-touchpad {
+  width: 212px;
+  height: 520px;
+  background-color: #101010;
+  border-width: 2px;
+  border-color: #262626;
+  border-radius: 96px;
+}
+
+.top-menu-btn {
+  position: absolute;
+  top: 12px;
+  left: 62px;
+  width: 88px;
+  height: 32px;
+  background-color: #242424;
+  border-radius: 16px;
+  justify-content: center;
   align-items: center;
 }
 
-.top-spacer {
-  width: 200px;
-  height: 22px;
-  flex-shrink: 0;
+.top-menu-txt {
+  color: #DDDDDD;
+  font-size: 16px;
+  font-weight: bold;
 }
 
-.top-row {
-  width: 196px;
-  height: 48px;
-  flex-shrink: 0;
+.phone-nav-bar {
+  position: absolute;
+  top: 50px;
+  left: 24px;
+  width: 164px;
+  height: 38px;
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 4px;
 }
 
-.back-btn {
-  width: 132px;
-  height: 48px;
-  background-color: #262626;
-  border-radius: 22px;
+.nav-btn {
+  width: 50px;
+  height: 38px;
+  background-color: #202020;
+  border-radius: 14px;
   justify-content: center;
   align-items: center;
 }
 
-.back-txt {
+.nav-txt {
   color: #FFFFFF;
-  font-size: 19px;
+  font-size: 17px;
   font-weight: bold;
-}
-
-.exit-btn {
-  width: 54px;
-  height: 48px;
-  background-color: #381A1A;
-  border-radius: 22px;
-  justify-content: center;
-  align-items: center;
-}
-
-.exit-txt {
-  color: #FF6B6B;
-  font-size: 20px;
-  font-weight: bold;
-}
-
-.status-line {
-  width: 196px;
-  height: 28px;
-  flex-shrink: 0;
-  color: #AAAAAA;
-  font-size: 18px;
-  font-weight: bold;
-  text-align: center;
-  lines: 1;
-  margin-bottom: 4px;
-}
-
-.touchpad-box {
-  width: 196px;
-  height: 316px;
-  flex-shrink: 0;
-  background-color: #161616;
-  border-width: 2px;
-  border-color: #333333;
-  border-radius: 32px;
-  margin-bottom: 8px;
-}
-
-.mode-btn {
-  width: 196px;
-  height: 58px;
-  flex-shrink: 0;
-  border-radius: 26px;
-  justify-content: center;
-  align-items: center;
-}
-
-.mode-cursor {
-  background-color: #FFFFFF;
-}
-
-.mode-scroll {
-  background-color: #262626;
-}
-
-.mode-txt-cursor {
-  color: #000000;
-  font-size: 19px;
-  font-weight: bold;
-}
-
-.mode-txt-scroll {
-  color: #FFFFFF;
-  font-size: 19px;
-  font-weight: bold;
-}
-
-.bottom-spacer {
-  width: 200px;
-  height: 32px;
-  flex-shrink: 0;
 }
 </style>
