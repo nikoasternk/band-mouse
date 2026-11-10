@@ -3,6 +3,7 @@ package com.band.mouse
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -19,7 +20,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -58,6 +61,7 @@ class MainActivity : ComponentActivity() {
     private var connectedBandName by mutableStateOf<String?>(null)
     private var isCheckingConnection by mutableStateOf(true)
     private var isAccessibilityGranted by mutableStateOf(false)
+    private var isWriteSettingsGranted by mutableStateOf(false)
     private var isMasterServiceEnabled by mutableStateOf(true)
     private var sensitivity by mutableFloatStateOf(3.0f)
     private var scrollSpeed by mutableFloatStateOf(8.0f)
@@ -114,6 +118,7 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(innerPadding),
                             bandStatus = bandStatusText,
                             isAccessibilityGranted = isAccessibilityGranted,
+                            isWriteSettingsGranted = isWriteSettingsGranted,
                             isMasterEnabled = isMasterServiceEnabled,
                             sensitivity = sensitivity,
                             scrollSpeed = scrollSpeed,
@@ -126,6 +131,13 @@ class MainActivity : ComponentActivity() {
                             onConnectWatch = { startWatchSession() },
                             onOpenAccessibility = {
                                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                            },
+                            onOpenWriteSettings = {
+                                val intent = Intent(
+                                    Settings.ACTION_MANAGE_WRITE_SETTINGS,
+                                    Uri.parse("package:$packageName")
+                                )
+                                startActivity(intent)
                             },
                             onSensitivityChange = { value ->
                                 sensitivity = value
@@ -157,6 +169,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         isAccessibilityGranted = MouseAccessibilityService.instance != null
+        isWriteSettingsGranted = Settings.System.canWrite(this)
         mouseClient.ensureListening()
     }
 
@@ -211,12 +224,14 @@ fun MouseControlScreen(
     modifier: Modifier = Modifier,
     bandStatus: String,
     isAccessibilityGranted: Boolean,
+    isWriteSettingsGranted: Boolean,
     isMasterEnabled: Boolean,
     sensitivity: Float,
     scrollSpeed: Float,
     onMasterToggle: (Boolean) -> Unit,
     onConnectWatch: () -> Unit,
     onOpenAccessibility: () -> Unit,
+    onOpenWriteSettings: () -> Unit,
     onSensitivityChange: (Float) -> Unit,
     onScrollSpeedChange: (Float) -> Unit,
     onResetSpeeds: () -> Unit
@@ -224,6 +239,7 @@ fun MouseControlScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -235,7 +251,7 @@ fun MouseControlScreen(
                 modifier = Modifier
                     .padding(16.dp)
                     .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -262,6 +278,20 @@ fun MouseControlScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(stringResource(R.string.btn_open_accessibility))
+                }
+
+                Text(
+                    text = if (isWriteSettingsGranted) stringResource(R.string.brightness_perm_on) else stringResource(R.string.brightness_perm_off),
+                    style = MaterialTheme.typography.labelLarge
+                )
+
+                if (!isWriteSettingsGranted) {
+                    FilledTonalButton(
+                        onClick = onOpenWriteSettings,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.btn_open_write_settings))
+                    }
                 }
             }
         }
