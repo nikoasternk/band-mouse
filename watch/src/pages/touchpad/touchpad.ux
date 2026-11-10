@@ -10,7 +10,7 @@
 
     <div
       class="top-menu-btn"
-      style="top: 12px; left: {{menuLeft}}px; width: {{menuW}}px; height: {{menuH}}px; border-radius: {{menuRadius}}px;"
+      style="top: 0px; left: {{menuLeft}}px; width: {{menuW}}px; height: {{menuH}}px; border-bottom-left-radius: {{menuRadius}}px; border-bottom-right-radius: {{menuRadius}}px;"
       @click="openMenu">
       <text class="top-menu-txt" style="font-size: {{menuFont}}px;">{{strings.menuTopBtn}}</text>
     </div>
@@ -20,22 +20,22 @@
       if="{{showNavBar}}"
       style="top: {{navTop}}px; left: {{navLeft}}px; width: {{navRowW}}px; height: {{navBtnH}}px;">
       <div
-        class="nav-btn"
-        style="width: {{navBtnW}}px; height: {{navBtnH}}px; border-radius: {{navBtnRadius}}px;"
+        class="nav-btn nav-btn-left"
+        style="width: {{navBtnW}}px; height: {{navBtnH}}px; border-top-left-radius: {{navBtnRadius}}px; border-bottom-left-radius: {{navBtnRadius}}px;"
         @click="onTriangleTap">
         <text class="nav-txt" style="font-size: {{navFont}}px;">◀</text>
       </div>
 
       <div
-        class="nav-btn"
-        style="width: {{navBtnW}}px; height: {{navBtnH}}px; border-radius: {{navBtnRadius}}px;"
+        class="nav-btn nav-btn-mid"
+        style="width: {{navBtnW}}px; height: {{navBtnH}}px;"
         @click="onCircleTap">
         <text class="nav-txt" style="font-size: {{navFont}}px;">●</text>
       </div>
 
       <div
-        class="nav-btn"
-        style="width: {{navBtnW}}px; height: {{navBtnH}}px; border-radius: {{navBtnRadius}}px;"
+        class="nav-btn nav-btn-right"
+        style="width: {{navBtnW}}px; height: {{navBtnH}}px; border-top-right-radius: {{navBtnRadius}}px; border-bottom-right-radius: {{navBtnRadius}}px;"
         @touchstart="onSquareTouchStart"
         @touchend="onSquareTouchEnd"
         @touchcancel="onSquareTouchCancel">
@@ -61,20 +61,22 @@ export default {
     stealthOnSquare: true,
     stealthHoldSec: 3,
 
-    menuW: 88,
-    menuH: 32,
-    menuLeft: 62,
-    menuRadius: 16,
-    menuFont: 16,
+    menuW: 196,
+    menuH: 48,
+    menuLeft: 8,
+    menuRadius: 20,
+    menuFont: 18,
 
-    navTop: 50,
-    navLeft: 24,
-    navRowW: 164,
-    navBtnW: 50,
-    navBtnH: 38,
-    navBtnRadius: 14,
-    navFont: 17,
+    navTop: 48,
+    navLeft: 10,
+    navRowW: 192,
+    navBtnW: 64,
+    navBtnH: 44,
+    navBtnRadius: 16,
+    navFont: 18,
 
+    startX: 0,
+    startY: 0,
     lastX: 0,
     lastY: 0,
     startTime: 0,
@@ -82,7 +84,6 @@ export default {
     isMoveUnlocked: false,
     bucketX: 0,
     bucketY: 0,
-    scrollTickCounter: 0,
     flushTimer: null,
     hybridHoldTimer: null,
     squareHoldTimer: null,
@@ -94,43 +95,26 @@ export default {
       if (this.bucketX === 0 && this.bucketY === 0) return;
 
       if (this.activeGestureMode === 'scroll') {
-        this.scrollTickCounter += 1;
-        const absX = Math.abs(this.bucketX);
-        const absY = Math.abs(this.bucketY);
-        if (this.scrollTickCounter < 2 && absX < 6 && absY < 6) {
+        if (Math.abs(this.bucketX) < 4 && Math.abs(this.bucketY) < 4) {
           return;
         }
-        if (absX < 2.5 && absY < 2.5) {
-          return;
-        }
-        this.scrollTickCounter = 0;
-        const dx = Math.round(this.bucketX);
-        const dy = Math.round(this.bucketY);
+      }
+
+      const dx = Math.round(this.bucketX);
+      const dy = Math.round(this.bucketY);
+
+      if (dx !== 0 || dy !== 0) {
         this.bucketX -= dx;
         this.bucketY -= dy;
 
-        if ((dx !== 0 || dy !== 0) && globalThis.wearableBridge) {
+        if (globalThis.wearableBridge) {
+          const actType = this.activeGestureMode === 'scroll' ? 's' : 'm';
           globalThis.wearableBridge.sendPacket({
             tag: 'mouse',
-            act: 's',
+            act: actType,
             dx: dx,
             dy: dy
           });
-        }
-      } else {
-        const dx = Math.round(this.bucketX);
-        const dy = Math.round(this.bucketY);
-        if (dx !== 0 || dy !== 0) {
-          this.bucketX -= dx;
-          this.bucketY -= dy;
-          if (globalThis.wearableBridge) {
-            globalThis.wearableBridge.sendPacket({
-              tag: 'mouse',
-              act: 'm',
-              dx: dx,
-              dy: dy
-            });
-          }
         }
       }
     }, 30);
@@ -170,20 +154,20 @@ export default {
 
   computeLayoutMetrics(menuScalePct, navScalePct) {
     const mScale = Math.max(0.7, Math.min(1.4, menuScalePct / 100));
-    this.menuW = Math.round(88 * mScale);
-    this.menuH = Math.round(32 * mScale);
+    this.menuW = Math.min(212, Math.round(196 * mScale));
+    this.menuH = Math.round(48 * mScale);
     this.menuLeft = Math.round((212 - this.menuW) / 2);
-    this.menuRadius = Math.round(this.menuH / 2);
-    this.menuFont = Math.max(11, Math.round(16 * mScale));
+    this.menuRadius = Math.round(this.menuH * 0.45);
+    this.menuFont = Math.max(13, Math.round(18 * mScale));
 
     const nScale = Math.max(0.7, Math.min(1.3, navScalePct / 100));
-    this.navBtnW = Math.round(50 * nScale);
-    this.navBtnH = Math.round(38 * nScale);
-    this.navRowW = Math.min(204, Math.round(164 * nScale));
+    this.navBtnW = Math.min(70, Math.round(64 * nScale));
+    this.navBtnH = Math.round(44 * nScale);
+    this.navRowW = this.navBtnW * 3;
     this.navLeft = Math.round((212 - this.navRowW) / 2);
-    this.navTop = 12 + this.menuH + 6;
-    this.navBtnRadius = Math.round(14 * nScale);
-    this.navFont = Math.max(12, Math.round(17 * nScale));
+    this.navTop = this.menuH;
+    this.navBtnRadius = Math.round(16 * nScale);
+    this.navFont = Math.max(13, Math.round(18 * nScale));
   },
 
   extractPoint(e) {
@@ -201,13 +185,14 @@ export default {
   onTouchStart(e) {
     const pt = this.extractPoint(e);
     if (!pt) return;
+    this.startX = pt.x;
+    this.startY = pt.y;
     this.lastX = pt.x;
     this.lastY = pt.y;
     this.startTime = Date.now();
     this.totalMoved = 0;
     this.bucketX = 0;
     this.bucketY = 0;
-    this.scrollTickCounter = 0;
     this.clearHybridTimer();
 
     if (this.controlMode === 'scroll') {
@@ -246,10 +231,10 @@ export default {
     this.lastY = pt.y;
 
     this.totalMoved += Math.abs(dx) + Math.abs(dy);
+    const distFromStart = Math.hypot(pt.x - this.startX, pt.y - this.startY);
 
     if (this.hybridPending) {
-      const holdTolerance = Math.max(8, this.tapLockPx + 4);
-      if (this.totalMoved < holdTolerance) {
+      if (distFromStart < Math.max(10, this.tapLockPx + 5)) {
         return;
       }
       this.hybridPending = false;
@@ -257,7 +242,7 @@ export default {
       this.activeGestureMode = 'cursor';
       this.isMoveUnlocked = true;
     } else if (!this.isMoveUnlocked) {
-      if (this.totalMoved < this.tapLockPx) {
+      if (distFromStart < this.tapLockPx) {
         return;
       }
       this.isMoveUnlocked = true;
@@ -278,7 +263,7 @@ export default {
       return;
     }
 
-    if (elapsed < 240 && this.totalMoved <= Math.max(3, this.tapLockPx)) {
+    if (elapsed < 240 && !this.isMoveUnlocked) {
       this.bucketX = 0;
       this.bucketY = 0;
       globalThis.triggerHaptic('short');
@@ -384,6 +369,8 @@ export default {
 .top-menu-btn {
   position: absolute;
   background-color: #242424;
+  border-bottom-width: 2px;
+  border-color: #101010;
   justify-content: center;
   align-items: center;
 }
@@ -397,7 +384,7 @@ export default {
 .phone-nav-bar {
   position: absolute;
   flex-direction: row;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
 }
 
@@ -405,6 +392,22 @@ export default {
   background-color: #202020;
   justify-content: center;
   align-items: center;
+}
+
+.nav-btn-left {
+  border-right-width: 1px;
+  border-color: #101010;
+}
+
+.nav-btn-mid {
+  border-left-width: 1px;
+  border-right-width: 1px;
+  border-color: #101010;
+}
+
+.nav-btn-right {
+  border-left-width: 1px;
+  border-color: #101010;
 }
 
 .nav-txt {
