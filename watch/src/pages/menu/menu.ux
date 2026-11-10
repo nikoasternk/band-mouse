@@ -1,0 +1,203 @@
+<template>
+  <div class="menu-page">
+    <scroll class="menu-scroll" scroll-y="true">
+      <div class="edge-spacer"></div>
+
+      <div class="action-btn" @click="goBackToPad">
+        <text class="action-btn-txt" style="font-size: {{backFont}}px;">{{strings.backToPad}}</text>
+      </div>
+
+      <div class="mode-card">
+        <text class="card-title" style="font-size: {{modeTitleFont}}px;">{{strings.modeTitle}}</text>
+        <div class="{{isScroll ? 'mode-toggle toggle-scroll' : 'mode-toggle toggle-cursor'}}" @click="toggleControlMode">
+          <text class="{{isScroll ? 'toggle-txt-scroll' : 'toggle-txt-cursor'}}" style="font-size: {{modeBtnFont}}px;">{{isScroll ? strings.modeScroll : strings.modeCursor}}</text>
+        </div>
+      </div>
+
+      <div class="action-btn" @click="openSettings">
+        <text class="action-btn-txt" style="font-size: {{settingsFont}}px;">{{strings.settings}}</text>
+      </div>
+
+      <div class="exit-btn" @click="exitApplication">
+        <text class="exit-btn-txt" style="font-size: {{exitFont}}px;">{{strings.exitApp}}</text>
+      </div>
+
+      <div class="edge-spacer-bottom"></div>
+    </scroll>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import vibrator from '@system.vibrator'
+import { getStrings, fitFontSize } from '../../services/Localization'
+
+export default {
+  private: {
+    strings: getStrings('auto'),
+    isScroll: false,
+    backFont: 22,
+    modeTitleFont: 19,
+    modeBtnFont: 21,
+    settingsFont: 22,
+    exitFont: 22
+  },
+
+  onShow() {
+    globalThis.notifyPageShown();
+    globalThis.loadMouseConfig((cfg) => {
+      this.strings = getStrings(cfg.language || 'auto');
+      this.isScroll = cfg.controlMode === 'scroll';
+      this.updateFonts();
+    });
+  },
+
+  onHide() {
+    globalThis.notifyPageHidden();
+  },
+
+  updateFonts() {
+    const s = this.strings;
+    this.backFont = fitFontSize(s.backToPad, 172, 23, 16, true);
+    this.modeTitleFont = fitFontSize(s.modeTitle, 172, 19, 14, false);
+    const modeLabel = this.isScroll ? s.modeScroll : s.modeCursor;
+    this.modeBtnFont = fitFontSize(modeLabel, 164, 22, 16, true);
+    this.settingsFont = fitFontSize(s.settings, 172, 23, 16, true);
+    this.exitFont = fitFontSize(s.exitApp, 172, 23, 16, true);
+  },
+
+  toggleControlMode() {
+    this.isScroll = !this.isScroll;
+    globalThis.mouseConfig.controlMode = this.isScroll ? 'scroll' : 'cursor';
+    globalThis.saveMouseConfig();
+    this.updateFonts();
+    try { vibrator.vibrate({ mode: 'short' }); } catch (e) {}
+  },
+
+  goBackToPad() {
+    router.back();
+  },
+
+  openSettings() {
+    router.push({ uri: 'pages/settings' });
+  },
+
+  exitApplication() {
+    try { vibrator.vibrate({ mode: 'short' }); } catch (e) {}
+    globalThis.forceCloseWatchApp(this.$app);
+  }
+}
+</script>
+
+<style>
+.menu-page {
+  width: 212px;
+  height: 520px;
+  background-color: #000000;
+}
+
+.menu-scroll {
+  width: 212px;
+  height: 520px;
+  flex-direction: column;
+  align-items: center;
+}
+
+.edge-spacer {
+  width: 200px;
+  height: 34px;
+  flex-shrink: 0;
+}
+
+.edge-spacer-bottom {
+  width: 200px;
+  height: 48px;
+  flex-shrink: 0;
+}
+
+.action-btn {
+  width: 200px;
+  height: 68px;
+  flex-shrink: 0;
+  background-color: #262626;
+  border-radius: 26px;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.action-btn-txt {
+  color: #FFFFFF;
+  font-weight: bold;
+  text-align: center;
+  lines: 1;
+}
+
+.mode-card {
+  width: 200px;
+  height: 148px;
+  flex-shrink: 0;
+  background-color: #1A1A1A;
+  border-radius: 26px;
+  padding: 12px 10px;
+  margin-bottom: 10px;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-title {
+  width: 176px;
+  color: #FFFFFF;
+  font-weight: bold;
+  text-align: center;
+  lines: 2;
+}
+
+.mode-toggle {
+  width: 176px;
+  height: 60px;
+  flex-shrink: 0;
+  border-radius: 22px;
+  justify-content: center;
+  align-items: center;
+}
+
+.toggle-cursor {
+  background-color: #FFFFFF;
+}
+
+.toggle-scroll {
+  background-color: #303030;
+}
+
+.toggle-txt-cursor {
+  color: #000000;
+  font-weight: bold;
+  lines: 1;
+}
+
+.toggle-txt-scroll {
+  color: #FFFFFF;
+  font-weight: bold;
+  lines: 1;
+}
+
+.exit-btn {
+  width: 200px;
+  height: 68px;
+  flex-shrink: 0;
+  background-color: #3A1818;
+  border-radius: 26px;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.exit-btn-txt {
+  color: #FF6B6B;
+  font-weight: bold;
+  text-align: center;
+  lines: 1;
+}
+</style>
