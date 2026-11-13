@@ -1,3 +1,6 @@
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+import org.gradle.api.tasks.testing.logging.TestLogEvent
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -12,8 +15,8 @@ android {
         applicationId = "com.band.mouse"
         minSdk = 26
         targetSdk = 35
-        versionCode = 100
-        versionName = "1.0.0"
+        versionCode = 110
+        versionName = "1.1.0"
     }
 
     signingConfigs {
@@ -32,6 +35,17 @@ android {
         }
         debug {
             signingConfig = signingConfigs.getByName("release")
+        }
+    }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+        unitTests.all {
+            it.testLogging {
+                events(TestLogEvent.PASSED, TestLogEvent.SKIPPED, TestLogEvent.FAILED, TestLogEvent.STANDARD_OUT, TestLogEvent.STANDARD_ERROR)
+                exceptionFormat = TestExceptionFormat.FULL
+                showStandardStreams = true
+            }
         }
     }
 
@@ -65,4 +79,6 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20231013")
 }
