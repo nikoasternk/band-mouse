@@ -2,7 +2,7 @@ package com.band.mouse
 
 import org.json.JSONObject
 import org.json.JSONTokener
-import kotlin.math. PI
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.hypot
 
@@ -66,18 +66,31 @@ sealed class WatchCommand {
     data class ScrollHold(val dragCursor: Boolean?, val mode: String?) : WatchCommand()
     data object ScrollEnd : WatchCommand()
     data class ScrollModeConfig(val dragCursor: Boolean, val mode: String?) : WatchCommand()
+    data class PhoneBrightness(val enabled: Boolean, val pct: Int) : WatchCommand()
     data object Tap : WatchCommand()
     data object Back : WatchCommand()
     data object Home : WatchCommand()
     data object Recents : WatchCommand()
     data object Stealth : WatchCommand()
     data object Ping : WatchCommand()
-    data class State(val open: Boolean, val mode: String?) : WatchCommand()
+    data class State(
+        val open: Boolean,
+        val mode: String?,
+        val dragCursor: Boolean?,
+        val brightOn: Boolean?,
+        val brightPct: Int?
+    ) : WatchCommand()
     data class Handshake(val step: Int) : WatchCommand()
     data object Unknown : WatchCommand()
 }
 
 object MouseEngine {
+
+    const val DEFAULT_DPI = 1200
+
+    fun dpiToPixelsPerUnit(dpi: Int): Float {
+        return dpi.coerceIn(200, 3200) / 400.0f
+    }
 
     fun computeStealthOverlayBounds(screenWidth: Int, screenHeight: Int): OverlayBounds {
         val maxDim = maxOf(screenWidth, screenHeight) + 1600
@@ -94,14 +107,15 @@ object MouseEngine {
         currentTargetY: Float,
         dx: Int,
         dy: Int,
-        sensitivity: Float,
+        cursorDpi: Int,
         screenWidth: Int,
         screenHeight: Int
     ): Pair<Float, Float> {
         val w = screenWidth.coerceAtLeast(1)
         val h = screenHeight.coerceAtLeast(1)
-        val nx = (currentTargetX + dx * sensitivity).coerceIn(0f, (w - 1).toFloat())
-        val ny = (currentTargetY + dy * sensitivity).coerceIn(0f, (h - 1).toFloat())
+        val scale = dpiToPixelsPerUnit(cursorDpi)
+        val nx = (currentTargetX + dx * scale).coerceIn(0f, (w - 1).toFloat())
+        val ny = (currentTargetY + dy * scale).coerceIn(0f, (h - 1).toFloat())
         return Pair(nx, ny)
     }
 
@@ -132,17 +146,17 @@ object MouseEngine {
         return Pair(smoothX, smoothY)
     }
 
-    fun computeScrollDelta(dx: Int, dy: Int, scrollMultiplier: Float): Pair<Float, Float> {
-        val dragScale = scrollMultiplier * 0.55f
-        return Pair(dx * dragScale, dy * dragScale)
+    fun computeScrollDelta(dx: Int, dy: Int, scrollDpi: Int): Pair<Float, Float> {
+        val scale = dpiToPixelsPerUnit(scrollDpi)
+        return Pair(dx * scale, dy * scale)
     }
 
-    fun computeFourWayScrollDelta(dx: Int, dy: Int, scrollMultiplier: Float): Pair<Float, Float> {
-        val dragScale = scrollMultiplier * 0.55f
+    fun computeFourWayScrollDelta(dx: Int, dy: Int, scrollDpi: Int): Pair<Float, Float> {
+        val scale = dpiToPixelsPerUnit(scrollDpi)
         return if (abs(dx) > abs(dy)) {
-            Pair(dx * dragScale, 0f)
+            Pair(dx * scale, 0f)
         } else {
-            Pair(0f, dy * dragScale)
+            Pair(0f, dy * scale)
         }
     }
 
@@ -235,6 +249,8 @@ object MouseEngine {
             val packet = JSONObject(text)
             val dragOpt = if (packet.has("drag")) packet.optBoolean("drag", true) else null
             val modeOpt = if (packet.has("mode")) packet.optString("mode", "")?.takeIf { it.isNotEmpty() } else null
+            val brightOnOpt = if (packet.has("brightOn")) packet.optBoolean("brightOn", false) else null
+            val brightPctOpt = if (packet.has("brightPct")) packet.optInt("brightPct", 50) else null
             return when (packet.optString("tag")) {
                 "mouse" -> {
                     when (packet.optString("act")) {
@@ -244,13 +260,14 @@ object MouseEngine {
                         "s_hold" -> WatchCommand.ScrollHold(dragOpt, modeOpt)
                         "s_end" -> WatchCommand.ScrollEnd
                         "s_mode" -> WatchCommand.ScrollModeConfig(packet.optBoolean("drag", true), modeOpt)
+                        "p_bright" -> WatchCommand.PhoneBrightness(packet.optBoolean("on", false), packet.optInt("pct", 50))
                         "tap" -> WatchCommand.Tap
                         "back" -> WatchCommand.Back
                         "home" -> WatchCommand.Home
                         "recents" -> WatchCommand.Recents
                         "stealth" -> WatchCommand.Stealth
                         "ping" -> WatchCommand.Ping
-                        "state" -> WatchCommand.State(packet.optBoolean("open", false), modeOpt)
+                        "state" -> WatchCommand.State(packet.optBoolean("open", false), modeOpt, dragOpt, brightOnOpt, brightPctOpt)
                         else -> WatchCommand.Unknown
                     }
                 }
