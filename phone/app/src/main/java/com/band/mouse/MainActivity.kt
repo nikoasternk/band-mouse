@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
     private var isAccessibilityGranted by mutableStateOf(false)
     private var isWriteSettingsGranted by mutableStateOf(false)
     private var isMasterServiceEnabled by mutableStateOf(true)
+    private var isDragScrollEnabled by mutableStateOf(true)
     private var sensitivity by mutableFloatStateOf(3.0f)
     private var scrollSpeed by mutableFloatStateOf(8.0f)
     private var languageMode by mutableStateOf("auto")
@@ -76,10 +77,12 @@ class MainActivity : ComponentActivity() {
         sensitivity = prefs.getFloat("sensitivity", 3.0f)
         scrollSpeed = prefs.getFloat("scroll_mult", 8.0f)
         isMasterServiceEnabled = prefs.getBoolean("master_enabled", true)
+        isDragScrollEnabled = prefs.getBoolean("drag_scroll", true)
 
         MouseAccessibilityService.cursorSensitivity = sensitivity
         MouseAccessibilityService.scrollMultiplier = scrollSpeed
         MouseAccessibilityService.isServiceMasterEnabled = isMasterServiceEnabled
+        MouseAccessibilityService.isDragScrollEnabled = isDragScrollEnabled
 
         mouseClient = WearableMouseClient.getInstance(this)
         startWatchSession()
@@ -120,6 +123,7 @@ class MainActivity : ComponentActivity() {
                             isAccessibilityGranted = isAccessibilityGranted,
                             isWriteSettingsGranted = isWriteSettingsGranted,
                             isMasterEnabled = isMasterServiceEnabled,
+                            isDragScroll = isDragScrollEnabled,
                             sensitivity = sensitivity,
                             scrollSpeed = scrollSpeed,
                             onMasterToggle = { enabled ->
@@ -127,6 +131,12 @@ class MainActivity : ComponentActivity() {
                                 prefs.edit().putBoolean("master_enabled", enabled).apply()
                                 MouseAccessibilityService.instance?.setMasterEnabled(enabled)
                                 MouseAccessibilityService.isServiceMasterEnabled = enabled
+                            },
+                            onDragScrollToggle = { enabled ->
+                                isDragScrollEnabled = enabled
+                                prefs.edit().putBoolean("drag_scroll", enabled).apply()
+                                MouseAccessibilityService.instance?.setDragScrollMode(enabled)
+                                MouseAccessibilityService.isDragScrollEnabled = enabled
                             },
                             onConnectWatch = { startWatchSession() },
                             onOpenAccessibility = {
@@ -170,6 +180,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         isAccessibilityGranted = MouseAccessibilityService.instance != null
         isWriteSettingsGranted = Settings.System.canWrite(this)
+        isDragScrollEnabled = MouseAccessibilityService.isDragScrollEnabled
         mouseClient.ensureListening()
     }
 
@@ -226,9 +237,11 @@ fun MouseControlScreen(
     isAccessibilityGranted: Boolean,
     isWriteSettingsGranted: Boolean,
     isMasterEnabled: Boolean,
+    isDragScroll: Boolean,
     sensitivity: Float,
     scrollSpeed: Float,
     onMasterToggle: (Boolean) -> Unit,
+    onDragScrollToggle: (Boolean) -> Unit,
     onConnectWatch: () -> Unit,
     onOpenAccessibility: () -> Unit,
     onOpenWriteSettings: () -> Unit,
@@ -328,8 +341,25 @@ fun MouseControlScreen(
                 modifier = Modifier
                     .padding(16.dp)
                     .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.drag_scroll_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.drag_scroll_sub), style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(
+                        checked = isDragScroll,
+                        onCheckedChange = onDragScrollToggle
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
                 Text(
                     text = stringResource(R.string.label_sensitivity, String.format(Locale.US, "%.1f", sensitivity)),
                     style = MaterialTheme.typography.titleSmall,
