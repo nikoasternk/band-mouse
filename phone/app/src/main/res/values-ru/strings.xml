@@ -3,8 +3,6 @@
     <string name="app_name">Band Mouse</string>
     <string name="master_switch_title">Активный сервис мыши</string>
     <string name="master_switch_sub">Курсор рисуется только когда открыта прога на часах</string>
-    <string name="drag_scroll_title">Скролл реальным курсором</string>
-    <string name="drag_scroll_sub">Меняет курсор на перетаскивание и водит его зажатым в реальной позиции</string>
     <string name="device_status">Связь с часами</string>
     <string name="status_checking">Подключение к часам...</string>
     <string name="status_connected">Подключено: %1$s</string>
@@ -12,12 +10,12 @@
     <string name="service_on">Спецвозможности: Разрешение выдано ✓</string>
     <string name="service_off">Спецвозможности: Выключены (Включите Band Mouse)</string>
     <string name="btn_open_accessibility">Настройки Спецвозможностей</string>
-    <string name="brightness_perm_on">Управление яркостью скрытности: Выдано ✓</string>
-    <string name="brightness_perm_off">Для мин. яркости в скрытности выдайте доступ:</string>
+    <string name="brightness_perm_on">Управление яркостью телефона: Выдано ✓</string>
+    <string name="brightness_perm_off">Для управления яркостью выдайте доступ:</string>
     <string name="btn_open_write_settings">Разрешить изменение настроек</string>
     <string name="btn_launch_watch">Подключить и открыть тачпад</string>
-    <string name="label_sensitivity">Скорость курсора: %1$sx</string>
-    <string name="label_scroll_speed">Скорость скролла: %1$sx</string>
-    <string name="btn_reset_speeds">Сбросить (3x / 8x)</string>
+    <string name="label_cursor_dpi">Скорость курсора: %1$d DPI</string>
+    <string name="label_scroll_dpi">Скорость скролла: %1$d DPI</string>
+    <string name="btn_reset_dpi">Сбросить (1200 / 1200 DPI)</string>
     <string name="toast_ready">Тачпад запущен на Band 10!</string>
 </resources>
