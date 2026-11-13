@@ -636,11 +636,24 @@ class MouseAccessibilityService : AccessibilityService() {
             isScrollHolding = true
             setCursorDragVisual(true)
 
+            val metrics = resources.displayMetrics
+            screenWidth = metrics.widthPixels
+            screenHeight = metrics.heightPixels
+
             val useRealCursorDrag = isDragScrollEnabled && watchControlMode != "scroll"
             val scaled = if (useRealCursorDrag || watchControlMode == "scroll") {
                 MouseEngine.computeScrollDelta(dx, dy, scrollMultiplier)
             } else {
                 MouseEngine.computeFourWayScrollDelta(dx, dy, scrollMultiplier)
+            }
+
+            if (useRealCursorDrag) {
+                targetX = (targetX + scaled.first).coerceIn(4f, (screenWidth - 5).toFloat())
+                targetY = (targetY + scaled.second).coerceIn(4f, (screenHeight - 5).toFloat())
+                if (!isAnimatingCursor) {
+                    isAnimatingCursor = true
+                    Choreographer.getInstance().postFrameCallback(frameCallback)
+                }
             }
 
             pendingScrollDx += scaled.first
@@ -682,9 +695,11 @@ class MouseAccessibilityService : AccessibilityService() {
 
         if (useRealCursorDrag) {
             holdWobble = -holdWobble
+            val startOriginX = (targetX - dx).coerceIn(4f, (screenWidth - 5).toFloat())
+            val startOriginY = (targetY - dy).coerceIn(4f, (screenHeight - 5).toFloat())
             val dragStep = MouseEngine.computeRealCursorDragStep(
-                targetX,
-                targetY,
+                startOriginX,
+                startOriginY,
                 dx,
                 dy,
                 holdWobble,
@@ -693,17 +708,12 @@ class MouseAccessibilityService : AccessibilityService() {
             )
             scrollCurX = dragStep.endX
             scrollCurY = dragStep.endY
-            targetX = scrollCurX
-            targetY = scrollCurY
-            cursorX = scrollCurX
-            cursorY = scrollCurY
-            updateCursorLayoutPosition()
 
             val path = Path().apply {
                 moveTo(dragStep.startX, dragStep.startY)
                 lineTo(dragStep.endX, dragStep.endY)
             }
-            val stroke = GestureDescription.StrokeDescription(path, 0, 90, true)
+            val stroke = GestureDescription.StrokeDescription(path, 0, 60, true)
             activeScrollStroke = stroke
             isScrollStrokeActive = true
             val gesture = GestureDescription.Builder().addStroke(stroke).build()
@@ -735,7 +745,7 @@ class MouseAccessibilityService : AccessibilityService() {
             lineTo(step.endX, step.endY)
         }
 
-        val stroke = GestureDescription.StrokeDescription(path, 0, 90, true)
+        val stroke = GestureDescription.StrokeDescription(path, 0, 80, true)
         activeScrollStroke = stroke
         isScrollStrokeActive = true
 
@@ -805,14 +815,9 @@ class MouseAccessibilityService : AccessibilityService() {
             }
             scrollCurX = dragStep.endX
             scrollCurY = dragStep.endY
-            targetX = scrollCurX
-            targetY = scrollCurY
-            cursorX = scrollCurX
-            cursorY = scrollCurY
-            updateCursorLayoutPosition()
 
             try {
-                val nextStroke = prevStroke.continueStroke(path, 0, 90, true)
+                val nextStroke = prevStroke.continueStroke(path, 0, 60, true)
                 activeScrollStroke = nextStroke
                 val gesture = GestureDescription.Builder().addStroke(nextStroke).build()
                 if (!dispatchGesture(gesture, scrollGestureCallback, null)) {
@@ -864,7 +869,7 @@ class MouseAccessibilityService : AccessibilityService() {
         scrollCurY = contStep.endY
 
         try {
-            val nextStroke = prevStroke.continueStroke(path, 0, 90, true)
+            val nextStroke = prevStroke.continueStroke(path, 0, 80, true)
             activeScrollStroke = nextStroke
             val gesture = GestureDescription.Builder().addStroke(nextStroke).build()
             if (!dispatchGesture(gesture, scrollGestureCallback, null)) {
