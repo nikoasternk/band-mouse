@@ -24,6 +24,26 @@ class BandMouseUnitTest {
     }
 
     @Test
+    fun testOneEuroFilterAndConstantRateInterpolator() {
+        val fx = OneEuroFilter()
+        val fy = OneEuroFilter()
+        var curX = 100f
+        var curY = 100f
+        val targetX = 160f
+        val targetY = 100f
+
+        for (frame in 1..25) {
+            val stepped = MouseEngine.stepCursorConstantRate(curX, curY, targetX, targetY, 0.0083f, fx, fy)
+            assertTrue("Cursor must monotonically approach target", stepped.first >= curX)
+            curX = stepped.first
+            curY = stepped.second
+        }
+        assertEquals(targetX, curX, 0.5f)
+        assertEquals(targetY, curY, 0.5f)
+        println("[TEST-LOG] 1-Euro Filter converged to ($curX, $curY)")
+    }
+
+    @Test
     fun testLinearCursorHasZeroAccelerationAndClampsBounds() {
         val slowStep1 = MouseEngine.computeLinearCursorTarget(500f, 500f, 2, -3, 3.0f, 1080, 2400)
         val slowStep2 = MouseEngine.computeLinearCursorTarget(slowStep1.first, slowStep1.second, 2, -3, 3.0f, 1080, 2400)
@@ -42,7 +62,6 @@ class BandMouseUnitTest {
 
         val holdStep = MouseEngine.computeRealCursorDragStep(295f, 880f, 0f, 0f, 0.4f, 1080, 2400)
         val pathLen = hypot(holdStep.endX - holdStep.startX, holdStep.endY - holdStep.startY)
-        println("[TEST-LOG] Stationary hold path length: $pathLen")
         assertTrue("Stationary hold path must be non-zero so Android never drops gesture", pathLen > 0.1f)
     }
 
