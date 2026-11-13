@@ -141,7 +141,7 @@ export default {
         }
       } else if (this.scrollStreaming && this.activeGestureMode === 'scroll') {
         this.idleHoldTicks += 1;
-        if (this.idleHoldTicks >= 6) {
+        if (this.idleHoldTicks >= 8) {
           this.idleHoldTicks = 0;
           if (globalThis.wearableBridge) {
             globalThis.wearableBridge.sendPacket({
@@ -153,7 +153,7 @@ export default {
           }
         }
       }
-    }, 28);
+    }, 20);
   },
 
   onShow() {
@@ -307,22 +307,24 @@ export default {
     this.lastX = pt.x;
     this.lastY = pt.y;
 
-    this.totalMoved += Math.abs(dx) + Math.abs(dy);
-    const distFromStart = Math.hypot(pt.x - this.startX, pt.y - this.startY);
+    if (!this.isMoveUnlocked || this.hybridPending) {
+      this.totalMoved += Math.abs(dx) + Math.abs(dy);
+      const distFromStart = Math.hypot(pt.x - this.startX, pt.y - this.startY);
 
-    if (this.hybridPending) {
-      if (distFromStart < Math.max(10, this.tapLockPx + 5)) {
-        return;
+      if (this.hybridPending) {
+        if (distFromStart < Math.max(10, this.tapLockPx + 5)) {
+          return;
+        }
+        this.hybridPending = false;
+        this.clearHybridTimer();
+        this.activeGestureMode = 'cursor';
+        this.isMoveUnlocked = true;
+      } else if (!this.isMoveUnlocked) {
+        if (distFromStart < this.tapLockPx) {
+          return;
+        }
+        this.isMoveUnlocked = true;
       }
-      this.hybridPending = false;
-      this.clearHybridTimer();
-      this.activeGestureMode = 'cursor';
-      this.isMoveUnlocked = true;
-    } else if (!this.isMoveUnlocked) {
-      if (distFromStart < this.tapLockPx) {
-        return;
-      }
-      this.isMoveUnlocked = true;
     }
 
     this.bucketX += dx;
