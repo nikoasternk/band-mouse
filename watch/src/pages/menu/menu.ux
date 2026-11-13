@@ -14,6 +14,26 @@
         </div>
       </div>
 
+      <div class="mode-card">
+        <text class="card-title" style="font-size: {{brightTitleFont}}px;">{{strings.phoneBrightTitle}}</text>
+        <div class="mode-toggle {{phoneBrightnessOn ? 'toggle-light' : 'toggle-dark'}}" @click="togglePhoneBrightness">
+          <text class="{{phoneBrightnessOn ? 'toggle-txt-dark' : 'toggle-txt-light'}}" style="font-size: {{brightToggleFont}}px;">{{phoneBrightnessOn ? strings.enabled : strings.disabled}}</text>
+        </div>
+      </div>
+
+      <div class="mode-card" if="{{phoneBrightnessOn}}">
+        <text class="card-title" style="font-size: {{brightLvlTitleFont}}px;">{{strings.phoneBrightLevel}}</text>
+        <div class="ctrl-row">
+          <div class="ctrl-btn" @click="changePhoneBrightness(-10)">
+            <text class="ctrl-btn-txt">-</text>
+          </div>
+          <text class="ctrl-val">{{phoneBrightnessPct}}%</text>
+          <div class="ctrl-btn" @click="changePhoneBrightness(10)">
+            <text class="ctrl-btn-txt">+</text>
+          </div>
+        </div>
+      </div>
+
       <div class="action-btn" @click="openSettings">
         <text class="action-btn-txt" style="font-size: {{settingsFont}}px;">{{strings.settings}}</text>
       </div>
@@ -36,9 +56,14 @@ export default {
     strings: getStrings('auto'),
     controlMode: 'cursor',
     modeLabel: 'CURSOR',
+    phoneBrightnessOn: false,
+    phoneBrightnessPct: 50,
     backFont: 22,
     modeTitleFont: 19,
     modeBtnFont: 21,
+    brightTitleFont: 19,
+    brightToggleFont: 21,
+    brightLvlTitleFont: 19,
     settingsFont: 22,
     exitFont: 22
   },
@@ -48,6 +73,8 @@ export default {
     globalThis.loadMouseConfig((cfg) => {
       this.strings = getStrings(cfg.language || 'auto');
       this.controlMode = cfg.controlMode || 'cursor';
+      this.phoneBrightnessOn = cfg.phoneBrightnessOn === true;
+      this.phoneBrightnessPct = cfg.phoneBrightnessPct !== undefined ? cfg.phoneBrightnessPct : 50;
       this.updateModeLabelAndFonts();
     });
   },
@@ -69,6 +96,9 @@ export default {
     this.backFont = fitFontSize(s.backToPad, 172, 23, 16, true);
     this.modeTitleFont = fitFontSize(s.modeTitle, 172, 19, 14, false);
     this.modeBtnFont = fitFontSize(this.modeLabel, 164, 22, 16, true);
+    this.brightTitleFont = fitFontSize(s.phoneBrightTitle, 172, 19, 14, false);
+    this.brightToggleFont = fitFontSize(this.phoneBrightnessOn ? s.enabled : s.disabled, 164, 22, 16, true);
+    this.brightLvlTitleFont = fitFontSize(s.phoneBrightLevel, 172, 19, 14, false);
     this.settingsFont = fitFontSize(s.settings, 172, 23, 16, true);
     this.exitFont = fitFontSize(s.exitApp, 172, 23, 16, true);
   },
@@ -93,6 +123,35 @@ export default {
     }
     this.updateModeLabelAndFonts();
     globalThis.triggerHaptic('soft');
+  },
+
+  togglePhoneBrightness() {
+    this.phoneBrightnessOn = !this.phoneBrightnessOn;
+    globalThis.mouseConfig.phoneBrightnessOn = this.phoneBrightnessOn;
+    globalThis.saveMouseConfig();
+    this.syncPhoneBrightness();
+    this.updateModeLabelAndFonts();
+    globalThis.triggerHaptic('soft');
+  },
+
+  changePhoneBrightness(delta) {
+    const next = Math.round((this.phoneBrightnessPct + delta) / 10) * 10;
+    this.phoneBrightnessPct = Math.max(0, Math.min(100, next));
+    globalThis.mouseConfig.phoneBrightnessPct = this.phoneBrightnessPct;
+    globalThis.saveMouseConfig();
+    this.syncPhoneBrightness();
+    globalThis.triggerHaptic('soft');
+  },
+
+  syncPhoneBrightness() {
+    if (globalThis.wearableBridge) {
+      globalThis.wearableBridge.sendPacket({
+        tag: 'mouse',
+        act: 'p_bright',
+        on: this.phoneBrightnessOn,
+        pct: this.phoneBrightnessPct
+      });
+    }
   },
 
   goBackToPad() {
@@ -204,6 +263,36 @@ export default {
   color: #FFFFFF;
   font-weight: bold;
   lines: 1;
+}
+
+.ctrl-row {
+  width: 176px;
+  height: 60px;
+  flex-shrink: 0;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ctrl-btn {
+  width: 56px;
+  height: 60px;
+  flex-shrink: 0;
+  background-color: #303030;
+  border-radius: 18px;
+  justify-content: center;
+  align-items: center;
+}
+
+.ctrl-btn-txt {
+  color: #FFFFFF;
+  font-size: 32px;
+  font-weight: bold;
+}
+
+.ctrl-val {
+  color: #FFFFFF;
+  font-size: 24px;
+  font-weight: bold;
 }
 
 .exit-btn {
