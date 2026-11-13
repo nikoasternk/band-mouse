@@ -55,6 +55,7 @@ const extractKeys = (block) => [...block.matchAll(/(\w+)\s*:/g)].map(m => m[1]);
 const enKeys = extractKeys(enMatch[1]);
 const ruKeys = extractKeys(enMatch[2]);
 assert.deepStrictEqual(enKeys, ruKeys, 'EN and RU localization keys must match 100%');
+assert.ok(enKeys.includes('dragScrollTitle'), 'dragScrollTitle key must exist');
 logPass(`Localization parity verified (${enKeys.length} keys in EN & RU)`);
 
 for (let mScalePct = 70; mScalePct <= 140; mScalePct += 10) {
@@ -68,7 +69,6 @@ for (let mScalePct = 70; mScalePct <= 140; mScalePct += 10) {
     const navVisW = Math.round(50 * nScale);
     const navVisH = Math.round(38 * nScale);
     const navHitTop = menuHitH;
-    const navHitH = navVisH + 8;
     const navHitCellW = Math.min(70, Math.max(navVisW + 8, Math.round(58 * nScale)));
 
     assert.strictEqual(navHitTop, menuHitH, 'Zero vertical gap between Menu and NavBar');
@@ -80,9 +80,16 @@ for (let mScalePct = 70; mScalePct <= 140; mScalePct += 10) {
 logPass('Hitbox & visual pill geometry verified across all scales (70%..140%)');
 
 const padCode = fs.readFileSync(path.join(srcDir, 'pages', 'touchpad', 'touchpad.ux'), 'utf8');
+assert.ok(padCode.includes("act: 's_start'"), 'Touchpad must send s_start packet');
 assert.ok(padCode.includes("act: 's_move'"), 'Touchpad must send 360 s_move packets');
+assert.ok(padCode.includes("act: 's_hold'"), 'Touchpad must send s_hold keepalive packet');
 assert.ok(padCode.includes("act: 's_end'"), 'Touchpad must send s_end packet on release');
 assert.strictEqual(padCode.includes('lastScrollDirY'), false, 'No 4-direction lock in touchpad');
-logPass('Touchpad 360 continuous scroll stream protocol verified');
+logPass('Touchpad 360 continuous drag-scroll stream protocol verified');
+
+const settingsCode = fs.readFileSync(path.join(srcDir, 'pages', 'settings', 'settings.ux'), 'utf8');
+assert.ok(settingsCode.includes('toggleDragScroll'), 'Settings must include toggleDragScroll');
+assert.ok(settingsCode.includes("act: 's_mode'"), 'Settings must sync s_mode to phone');
+logPass('Settings dragScroll toggle and sync verified');
 
 console.log('[WATCH-TEST SUCCESS] All watch checks and simulations passed!');
