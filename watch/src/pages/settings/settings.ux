@@ -200,6 +200,9 @@ export default {
   },
 
   onHide() {
+    if (this.hasUnsavedChanges) {
+      globalThis.applyHardwareDisplay();
+    }
     globalThis.notifyPageHidden();
   },
 
@@ -251,7 +254,6 @@ export default {
     this.hasUnsavedChanges = true;
     this.justSaved = false;
     this.confirmReset = false;
-    this.commitToMemoryAndStorage();
     this.updateAdaptiveFonts();
     globalThis.triggerHaptic('soft');
   },
@@ -271,6 +273,14 @@ export default {
     globalThis.mouseConfig.customBrightness = this.customBrightness;
     globalThis.mouseConfig.brightnessPct = this.brightnessPct;
     globalThis.saveMouseConfig();
+    if (globalThis.wearableBridge) {
+      globalThis.wearableBridge.sendPacket({
+        tag: 'mouse',
+        act: 's_mode',
+        drag: this.dragScroll,
+        mode: globalThis.mouseConfig.controlMode || 'cursor'
+      });
+    }
   },
 
   applyLanguagePreview() {
@@ -311,13 +321,6 @@ export default {
 
   toggleDragScroll() {
     this.dragScroll = !this.dragScroll;
-    if (globalThis.wearableBridge) {
-      globalThis.wearableBridge.sendPacket({
-        tag: 'mouse',
-        act: 's_mode',
-        drag: this.dragScroll
-      });
-    }
     this.markModified();
   },
 
@@ -417,19 +420,15 @@ export default {
     this.stayAwake = true;
     this.customBrightness = false;
     this.brightnessPct = 80;
-    if (globalThis.wearableBridge) {
-      globalThis.wearableBridge.sendPacket({
-        tag: 'mouse',
-        act: 's_mode',
-        drag: true
-      });
-    }
     this.applyLanguagePreview();
     this.applyBrightnessPreview();
     this.saveNow();
   },
 
   goBack() {
+    if (this.hasUnsavedChanges) {
+      globalThis.applyHardwareDisplay();
+    }
     globalThis.triggerHaptic('soft');
     router.back();
   }
