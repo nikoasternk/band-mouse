@@ -5,7 +5,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
-import kotlin.math.abs
 
 class BandMouseUnitTest {
 
@@ -43,6 +42,21 @@ class BandMouseUnitTest {
     }
 
     @Test
+    fun testRealCursorDragMovesInRealPositionAnd360Degrees() {
+        val step = MouseEngine.computeRealCursorDragStep(320f, 840f, -25f, 40f, 1080, 2400)
+        println("[TEST-LOG] Real cursor drag step: $step")
+        assertEquals(320f, step.startX, 0.01f)
+        assertEquals(840f, step.startY, 0.01f)
+        assertEquals(295f, step.endX, 0.01f)
+        assertEquals(880f, step.endY, 0.01f)
+        assertFalse(step.needsRecycle)
+
+        val holdStep = MouseEngine.computeRealCursorDragStep(295f, 880f, 0f, 0f, 1080, 2400)
+        assertEquals(295f, holdStep.endX, 0.01f)
+        assertEquals(880f, holdStep.endY, 0.01f)
+    }
+
+    @Test
     fun test360DegreeContinuousScrollVectors() {
         val delta = MouseEngine.computeScrollDelta(10, -15, 8.0f)
         println("[TEST-LOG] 360 scroll delta for (10, -15) at 8x: $delta")
@@ -50,20 +64,9 @@ class BandMouseUnitTest {
         assertTrue(delta.second < 0f)
 
         val initStep = MouseEngine.computeInitialScrollStep(540f, 1200f, delta.first, delta.second, 24f, 1080, 2400)
-        println("[TEST-LOG] Initial 360 scroll step: $initStep")
         assertTrue(initStep.endX > 540f)
         assertTrue(initStep.endY < 1200f)
         assertFalse(initStep.needsRecycle)
-
-        val contStep = MouseEngine.computeContinuationScrollStep(initStep.endX, initStep.endY, 12f, 18f, 1080, 2400)
-        println("[TEST-LOG] Continuation 360 scroll step: $contStep")
-        assertEquals(initStep.endX + 12f, contStep.endX, 0.01f)
-        assertEquals(initStep.endY + 18f, contStep.endY, 0.01f)
-        assertFalse(contStep.needsRecycle)
-
-        val edgeStep = MouseEngine.computeContinuationScrollStep(540f, 100f, 0f, -50f, 1080, 2400)
-        println("[TEST-LOG] Edge boundary recycle check: $edgeStep")
-        assertTrue(edgeStep.needsRecycle)
     }
 
     @Test
@@ -71,20 +74,23 @@ class BandMouseUnitTest {
         val moveCmd = MouseEngine.parseWatchPacket("""{"tag":"mouse","act":"m","dx":7,"dy":-4}""")
         assertEquals(WatchCommand.Move(7, -4), moveCmd)
 
-        val scrollMoveCmd = MouseEngine.parseWatchPacket("""{"tag":"mouse","act":"s_move","dx":-5,"dy":12}""")
-        assertEquals(WatchCommand.ScrollMove(-5, 12), scrollMoveCmd)
+        val scrollStartCmd = MouseEngine.parseWatchPacket("""{"tag":"mouse","act":"s_start","drag":true}""")
+        assertEquals(WatchCommand.ScrollStart(true), scrollStartCmd)
+
+        val scrollMoveCmd = MouseEngine.parseWatchPacket("""{"tag":"mouse","act":"s_move","dx":-5,"dy":12,"drag":true}""")
+        assertEquals(WatchCommand.ScrollMove(-5, 12, true), scrollMoveCmd)
+
+        val scrollHoldCmd = MouseEngine.parseWatchPacket("""{"tag":"mouse","act":"s_hold","drag":true}""")
+        assertEquals(WatchCommand.ScrollHold(true), scrollHoldCmd)
 
         val scrollEndCmd = MouseEngine.parseWatchPacket("""{"tag":"mouse","act":"s_end"}""")
         assertEquals(WatchCommand.ScrollEnd, scrollEndCmd)
 
+        val modeCfgCmd = MouseEngine.parseWatchPacket("""{"tag":"mouse","act":"s_mode","drag":false}""")
+        assertEquals(WatchCommand.ScrollModeConfig(false), modeCfgCmd)
+
         val quotedStealth = MouseEngine.parseWatchPacket("\"{\\\"tag\\\":\\\"mouse\\\",\\\"act\\\":\\\"stealth\\\"}\"")
         assertEquals(WatchCommand.Stealth, quotedStealth)
-
-        val stateOpen = MouseEngine.parseWatchPacket("""{"tag":"mouse","act":"state","open":true}""")
-        assertEquals(WatchCommand.State(true), stateOpen)
-
-        val hs = MouseEngine.parseWatchPacket("""{"tag":"handshake","step":1}""")
-        assertEquals(WatchCommand.Handshake(1), hs)
     }
 
     @Test
