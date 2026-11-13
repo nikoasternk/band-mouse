@@ -11,6 +11,8 @@ globalThis.mouseConfig = {
   language: 'auto',
   controlMode: 'cursor',
   dragScroll: true,
+  phoneBrightnessOn: false,
+  phoneBrightnessPct: 50,
   vibration: true,
   tapLockPx: 4,
   hybridHoldMs: 400,
@@ -99,8 +101,17 @@ globalThis.notifyPageShown = () => {
     hideTimer = null;
   }
   globalThis.applyHardwareDisplay();
+  const cfg = globalThis.mouseConfig;
   if (globalThis.wearableBridge) {
-    globalThis.wearableBridge.sendPacket({ tag: 'mouse', act: 'state', open: true });
+    globalThis.wearableBridge.sendPacket({
+      tag: 'mouse',
+      act: 'state',
+      open: true,
+      mode: cfg.controlMode || 'cursor',
+      drag: cfg.dragScroll !== false,
+      brightOn: cfg.phoneBrightnessOn === true,
+      brightPct: cfg.phoneBrightnessPct !== undefined ? cfg.phoneBrightnessPct : 50
+    });
   }
   if (!pingTimer) {
     pingTimer = setInterval(() => {
