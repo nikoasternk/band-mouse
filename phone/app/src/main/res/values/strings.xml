@@ -3,6 +3,8 @@
     <string name="app_name">Band Mouse</string>
     <string name="master_switch_title">Active Mouse Service</string>
     <string name="master_switch_sub">Cursor appears automatically when watch app is open</string>
+    <string name="drag_scroll_title">Real Cursor Drag on Scroll</string>
+    <string name="drag_scroll_sub">Holds and drags the real cursor in its position while scrolling</string>
     <string name="device_status">Watch Connection</string>
     <string name="status_checking">Connecting to watch...</string>
     <string name="status_connected">Connected: %1$s</string>
