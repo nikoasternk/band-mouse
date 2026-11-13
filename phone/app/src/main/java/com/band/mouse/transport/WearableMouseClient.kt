@@ -60,7 +60,8 @@ class WearableMouseClient private constructor(context: Context) {
                 cmd.mode,
                 cmd.dragCursor,
                 cmd.brightOn,
-                cmd.brightPct
+                cmd.brightPct,
+                cmd.watchPpi
             )
             is WatchCommand.Handshake -> {
                 if (cmd.step > 0) {
