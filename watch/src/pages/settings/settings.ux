@@ -19,6 +19,13 @@
       </div>
 
       <div class="card">
+        <text class="card-title" style="font-size: {{dragTitleFont}}px;">{{strings.dragScrollTitle}}</text>
+        <div class="toggle-btn {{dragScroll ? 'toggle-on' : 'toggle-off'}}" @click="toggleDragScroll">
+          <text class="{{dragScroll ? 'toggle-txt-on' : 'toggle-txt-off'}}">{{dragScroll ? strings.enabled : strings.disabled}}</text>
+        </div>
+      </div>
+
+      <div class="card">
         <text class="card-title" style="font-size: {{vibTitleFont}}px;">{{strings.vibrationTitle}}</text>
         <div class="toggle-btn {{vibration ? 'toggle-on' : 'toggle-off'}}" @click="toggleVibration">
           <text class="{{vibration ? 'toggle-txt-on' : 'toggle-txt-off'}}">{{vibration ? strings.enabled : strings.disabled}}</text>
@@ -150,6 +157,7 @@ export default {
     strings: getStrings('auto'),
     language: 'auto',
     languageLabel: 'Auto',
+    dragScroll: true,
     vibration: true,
     tapLockPx: 4,
     hybridHoldMs: 400,
@@ -168,6 +176,7 @@ export default {
     saveBtnFont: 22,
     langTitleFont: 20,
     langBtnFont: 20,
+    dragTitleFont: 20,
     vibTitleFont: 20,
     tapLockTitleFont: 20,
     hybridHoldTitleFont: 20,
@@ -197,6 +206,7 @@ export default {
   loadSavedSettings() {
     globalThis.loadMouseConfig((cfg) => {
       this.language = cfg.language || 'auto';
+      this.dragScroll = cfg.dragScroll !== false;
       this.vibration = cfg.vibration !== false;
       this.tapLockPx = cfg.tapLockPx !== undefined ? cfg.tapLockPx : 4;
       this.hybridHoldMs = cfg.hybridHoldMs || 400;
@@ -221,6 +231,7 @@ export default {
     this.saveBtnFont = fitFontSize(saveTxt, 172, 24, 15, true);
     this.langTitleFont = fitFontSize(s.language, 172, 21, 15, false);
     this.langBtnFont = fitFontSize(this.languageLabel, 164, 22, 15, true);
+    this.dragTitleFont = fitFontSize(s.dragScrollTitle, 172, 20, 14, false);
     this.vibTitleFont = fitFontSize(s.vibrationTitle, 172, 20, 14, false);
     this.tapLockTitleFont = fitFontSize(s.tapLockTitle, 172, 20, 14, false);
     this.hybridHoldTitleFont = fitFontSize(s.hybridHoldTitle, 172, 20, 14, false);
@@ -247,6 +258,7 @@ export default {
 
   commitToMemoryAndStorage() {
     globalThis.mouseConfig.language = this.language;
+    globalThis.mouseConfig.dragScroll = this.dragScroll;
     globalThis.mouseConfig.vibration = this.vibration;
     globalThis.mouseConfig.tapLockPx = this.tapLockPx;
     globalThis.mouseConfig.hybridHoldMs = this.hybridHoldMs;
@@ -294,6 +306,18 @@ export default {
       this.language = 'auto';
     }
     this.applyLanguagePreview();
+    this.markModified();
+  },
+
+  toggleDragScroll() {
+    this.dragScroll = !this.dragScroll;
+    if (globalThis.wearableBridge) {
+      globalThis.wearableBridge.sendPacket({
+        tag: 'mouse',
+        act: 's_mode',
+        drag: this.dragScroll
+      });
+    }
     this.markModified();
   },
 
@@ -369,7 +393,7 @@ export default {
     this.confirmReset = false;
     this.commitToMemoryAndStorage();
     this.updateAdaptiveFonts();
-    globalThis.triggerHaptic('short');
+    globalThis.triggerHaptic('soft');
   },
 
   onResetTap() {
@@ -381,6 +405,7 @@ export default {
     }
     this.confirmReset = false;
     this.language = 'auto';
+    this.dragScroll = true;
     this.vibration = true;
     this.tapLockPx = 4;
     this.hybridHoldMs = 400;
@@ -392,6 +417,13 @@ export default {
     this.stayAwake = true;
     this.customBrightness = false;
     this.brightnessPct = 80;
+    if (globalThis.wearableBridge) {
+      globalThis.wearableBridge.sendPacket({
+        tag: 'mouse',
+        act: 's_mode',
+        drag: true
+      });
+    }
     this.applyLanguagePreview();
     this.applyBrightnessPreview();
     this.saveNow();
