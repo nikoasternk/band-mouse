@@ -78,7 +78,8 @@ sealed class WatchCommand {
         val mode: String?,
         val dragCursor: Boolean?,
         val brightOn: Boolean?,
-        val brightPct: Int?
+        val brightPct: Int?,
+        val watchPpi: Float?
     ) : WatchCommand()
     data class Handshake(val step: Int) : WatchCommand()
     data object Unknown : WatchCommand()
@@ -86,10 +87,12 @@ sealed class WatchCommand {
 
 object MouseEngine {
 
-    const val DEFAULT_DPI = 1200
+    const val DEFAULT_DPI = 1000
+    const val DEFAULT_WATCH_PPI = 326.0f
 
-    fun dpiToPixelsPerUnit(dpi: Int): Float {
-        return dpi.coerceIn(200, 3200) / 400.0f
+    fun dpiToPixelsPerUnit(dpi: Int, watchPpi: Float = DEFAULT_WATCH_PPI): Float {
+        val safePpi = watchPpi.coerceIn(120.0f, 640.0f)
+        return dpi.coerceIn(200, 3200) / safePpi
     }
 
     fun computeStealthOverlayBounds(screenWidth: Int, screenHeight: Int): OverlayBounds {
@@ -109,11 +112,12 @@ object MouseEngine {
         dy: Int,
         cursorDpi: Int,
         screenWidth: Int,
-        screenHeight: Int
+        screenHeight: Int,
+        watchPpi: Float = DEFAULT_WATCH_PPI
     ): Pair<Float, Float> {
         val w = screenWidth.coerceAtLeast(1)
         val h = screenHeight.coerceAtLeast(1)
-        val scale = dpiToPixelsPerUnit(cursorDpi)
+        val scale = dpiToPixelsPerUnit(cursorDpi, watchPpi)
         val nx = (currentTargetX + dx * scale).coerceIn(0f, (w - 1).toFloat())
         val ny = (currentTargetY + dy * scale).coerceIn(0f, (h - 1).toFloat())
         return Pair(nx, ny)
@@ -146,13 +150,13 @@ object MouseEngine {
         return Pair(smoothX, smoothY)
     }
 
-    fun computeScrollDelta(dx: Int, dy: Int, scrollDpi: Int): Pair<Float, Float> {
-        val scale = dpiToPixelsPerUnit(scrollDpi)
+    fun computeScrollDelta(dx: Int, dy: Int, scrollDpi: Int, watchPpi: Float = DEFAULT_WATCH_PPI): Pair<Float, Float> {
+        val scale = dpiToPixelsPerUnit(scrollDpi, watchPpi)
         return Pair(dx * scale, dy * scale)
     }
 
-    fun computeFourWayScrollDelta(dx: Int, dy: Int, scrollDpi: Int): Pair<Float, Float> {
-        val scale = dpiToPixelsPerUnit(scrollDpi)
+    fun computeFourWayScrollDelta(dx: Int, dy: Int, scrollDpi: Int, watchPpi: Float = DEFAULT_WATCH_PPI): Pair<Float, Float> {
+        val scale = dpiToPixelsPerUnit(scrollDpi, watchPpi)
         return if (abs(dx) > abs(dy)) {
             Pair(dx * scale, 0f)
         } else {
@@ -251,6 +255,7 @@ object MouseEngine {
             val modeOpt = if (packet.has("mode")) packet.optString("mode", "")?.takeIf { it.isNotEmpty() } else null
             val brightOnOpt = if (packet.has("brightOn")) packet.optBoolean("brightOn", false) else null
             val brightPctOpt = if (packet.has("brightPct")) packet.optInt("brightPct", 50) else null
+            val ppiOpt = if (packet.has("ppi")) packet.optDouble("ppi", Double.NaN).takeIf { !it.isNaN() }?.toFloat() else null
             return when (packet.optString("tag")) {
                 "mouse" -> {
                     when (packet.optString("act")) {
@@ -267,7 +272,7 @@ object MouseEngine {
                         "recents" -> WatchCommand.Recents
                         "stealth" -> WatchCommand.Stealth
                         "ping" -> WatchCommand.Ping
-                        "state" -> WatchCommand.State(packet.optBoolean("open", false), modeOpt, dragOpt, brightOnOpt, brightPctOpt)
+                        "state" -> WatchCommand.State(packet.optBoolean("open", false), modeOpt, dragOpt, brightOnOpt, brightPctOpt, ppiOpt)
                         else -> WatchCommand.Unknown
                     }
                 }
