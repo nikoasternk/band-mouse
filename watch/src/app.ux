@@ -10,6 +10,7 @@ globalThis.wearableBridge = new WearableBridge();
 globalThis.mouseConfig = {
   language: 'auto',
   controlMode: 'cursor',
+  dragScroll: true,
   vibration: true,
   tapLockPx: 4,
   hybridHoldMs: 400,
