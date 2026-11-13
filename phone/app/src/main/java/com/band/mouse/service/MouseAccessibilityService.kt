@@ -42,6 +42,9 @@ class MouseAccessibilityService : AccessibilityService() {
         var scrollDpi: Int = MouseEngine.DEFAULT_DPI
 
         @Volatile
+        var watchTouchPpi: Float = MouseEngine.DEFAULT_WATCH_PPI
+
+        @Volatile
         var isServiceMasterEnabled: Boolean = true
 
         @Volatile
@@ -629,7 +632,8 @@ class MouseAccessibilityService : AccessibilityService() {
         modeOverride: String? = null,
         dragOverride: Boolean? = null,
         brightOnOverride: Boolean? = null,
-        brightPctOverride: Int? = null
+        brightPctOverride: Int? = null,
+        watchPpiOverride: Float? = null
     ) {
         mainHandler.post {
             mainHandler.removeCallbacks(watchTimeoutRunnable)
@@ -644,6 +648,9 @@ class MouseAccessibilityService : AccessibilityService() {
             }
             if (brightPctOverride != null) {
                 customPhoneBrightnessPct = brightPctOverride.coerceIn(0, 100)
+            }
+            if (watchPpiOverride != null && watchPpiOverride in 120.0f..640.0f) {
+                watchTouchPpi = watchPpiOverride
             }
             isWatchAppOpen = open
             if (open) {
@@ -710,7 +717,8 @@ class MouseAccessibilityService : AccessibilityService() {
                 dy,
                 cursorDpi,
                 screenWidth,
-                screenHeight
+                screenHeight,
+                watchTouchPpi
             )
             targetX = nextTarget.first
             targetY = nextTarget.second
@@ -792,9 +800,9 @@ class MouseAccessibilityService : AccessibilityService() {
 
             val useRealCursorDrag = isDragScrollEnabled && watchControlMode != "scroll"
             val scaled = if (useRealCursorDrag || watchControlMode == "scroll") {
-                MouseEngine.computeScrollDelta(dx, dy, scrollDpi)
+                MouseEngine.computeScrollDelta(dx, dy, scrollDpi, watchTouchPpi)
             } else {
-                MouseEngine.computeFourWayScrollDelta(dx, dy, scrollDpi)
+                MouseEngine.computeFourWayScrollDelta(dx, dy, scrollDpi, watchTouchPpi)
             }
 
             if (useRealCursorDrag) {
