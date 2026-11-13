@@ -99,6 +99,7 @@ export default {
     lastX: 0,
     lastY: 0,
     startTime: 0,
+    lastDispatchTime: 0,
     totalMoved: 0,
     isMoveUnlocked: false,
     bucketX: 0,
@@ -111,49 +112,59 @@ export default {
 
   onInit() {
     this.flushTimer = setInterval(() => {
-      const dx = Math.round(this.bucketX);
-      const dy = Math.round(this.bucketY);
+      this.flushBucket(false);
+    }, 22);
+  },
 
-      if (dx !== 0 || dy !== 0) {
-        this.bucketX -= dx;
-        this.bucketY -= dy;
-        this.idleHoldTicks = 0;
+  flushBucket(fromTouchEvent) {
+    const now = Date.now();
+    if (fromTouchEvent && (now - this.lastDispatchTime) < 15) {
+      return;
+    }
 
-        if (globalThis.wearableBridge) {
-          if (this.activeGestureMode === 'scroll') {
-            this.scrollStreaming = true;
-            globalThis.wearableBridge.sendPacket({
-              tag: 'mouse',
-              act: 's_move',
-              dx: dx,
-              dy: dy,
-              drag: this.dragScroll,
-              mode: this.controlMode
-            });
-          } else {
-            globalThis.wearableBridge.sendPacket({
-              tag: 'mouse',
-              act: 'm',
-              dx: dx,
-              dy: dy
-            });
-          }
-        }
-      } else if (this.scrollStreaming && this.activeGestureMode === 'scroll') {
-        this.idleHoldTicks += 1;
-        if (this.idleHoldTicks >= 8) {
-          this.idleHoldTicks = 0;
-          if (globalThis.wearableBridge) {
-            globalThis.wearableBridge.sendPacket({
-              tag: 'mouse',
-              act: 's_hold',
-              drag: this.dragScroll,
-              mode: this.controlMode
-            });
-          }
+    const dx = Math.round(this.bucketX);
+    const dy = Math.round(this.bucketY);
+
+    if (dx !== 0 || dy !== 0) {
+      this.bucketX -= dx;
+      this.bucketY -= dy;
+      this.idleHoldTicks = 0;
+      this.lastDispatchTime = now;
+
+      if (globalThis.wearableBridge) {
+        if (this.activeGestureMode === 'scroll') {
+          this.scrollStreaming = true;
+          globalThis.wearableBridge.sendPacket({
+            tag: 'mouse',
+            act: 's_move',
+            dx: dx,
+            dy: dy,
+            drag: this.dragScroll,
+            mode: this.controlMode
+          });
+        } else {
+          globalThis.wearableBridge.sendPacket({
+            tag: 'mouse',
+            act: 'm',
+            dx: dx,
+            dy: dy
+          });
         }
       }
-    }, 20);
+    } else if (!fromTouchEvent && this.scrollStreaming && this.activeGestureMode === 'scroll') {
+      this.idleHoldTicks += 1;
+      if (this.idleHoldTicks >= 8) {
+        this.idleHoldTicks = 0;
+        if (globalThis.wearableBridge) {
+          globalThis.wearableBridge.sendPacket({
+            tag: 'mouse',
+            act: 's_hold',
+            drag: this.dragScroll,
+            mode: this.controlMode
+          });
+        }
+      }
+    }
   },
 
   onShow() {
@@ -329,6 +340,7 @@ export default {
 
     this.bucketX += dx;
     this.bucketY += dy;
+    this.flushBucket(true);
   },
 
   onTouchEnd() {
@@ -366,6 +378,8 @@ export default {
           act: 'tap'
         });
       }
+    } else {
+      this.flushBucket(false);
     }
   },
 
