@@ -43,18 +43,18 @@ class WearableMouseClient private constructor(context: Context) {
     private val messageListener = OnMessageReceivedListener { _, bytes ->
         when (val cmd = MouseEngine.parseWatchPacket(bytes.decodeToString())) {
             is WatchCommand.Move -> MouseAccessibilityService.instance?.moveCursor(cmd.dx, cmd.dy)
-            is WatchCommand.ScrollStart -> MouseAccessibilityService.instance?.performScrollStart(cmd.dragCursor)
-            is WatchCommand.ScrollMove -> MouseAccessibilityService.instance?.performScrollMove(cmd.dx, cmd.dy, cmd.dragCursor)
-            is WatchCommand.ScrollHold -> MouseAccessibilityService.instance?.performScrollHold(cmd.dragCursor)
+            is WatchCommand.ScrollStart -> MouseAccessibilityService.instance?.performScrollStart(cmd.dragCursor, cmd.mode)
+            is WatchCommand.ScrollMove -> MouseAccessibilityService.instance?.performScrollMove(cmd.dx, cmd.dy, cmd.dragCursor, cmd.mode)
+            is WatchCommand.ScrollHold -> MouseAccessibilityService.instance?.performScrollHold(cmd.dragCursor, cmd.mode)
             is WatchCommand.ScrollEnd -> MouseAccessibilityService.instance?.performScrollEnd()
-            is WatchCommand.ScrollModeConfig -> MouseAccessibilityService.instance?.setDragScrollMode(cmd.dragCursor)
+            is WatchCommand.ScrollModeConfig -> MouseAccessibilityService.instance?.setDragScrollMode(cmd.dragCursor, cmd.mode)
             is WatchCommand.Tap -> MouseAccessibilityService.instance?.performClick()
             is WatchCommand.Back -> MouseAccessibilityService.instance?.performBack()
             is WatchCommand.Home -> MouseAccessibilityService.instance?.performHome()
             is WatchCommand.Recents -> MouseAccessibilityService.instance?.performRecents()
             is WatchCommand.Stealth -> MouseAccessibilityService.instance?.toggleStealthMode()
             is WatchCommand.Ping -> MouseAccessibilityService.instance?.onWatchHeartbeat()
-            is WatchCommand.State -> MouseAccessibilityService.instance?.onWatchStateChanged(cmd.open)
+            is WatchCommand.State -> MouseAccessibilityService.instance?.onWatchStateChanged(cmd.open, cmd.mode)
             is WatchCommand.Handshake -> {
                 if (cmd.step > 0) {
                     handshakeDeferred?.complete(true)
