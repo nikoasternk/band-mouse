@@ -45,6 +45,9 @@ class MouseAccessibilityService : AccessibilityService() {
         var isDragScrollEnabled: Boolean = true
 
         @Volatile
+        var watchControlMode: String = "cursor"
+
+        @Volatile
         var isWatchAppOpen: Boolean = false
 
         @Volatile
@@ -72,6 +75,7 @@ class MouseAccessibilityService : AccessibilityService() {
     private var activeScrollStroke: GestureDescription.StrokeDescription? = null
     private var scrollCurX = 540f
     private var scrollCurY = 1200f
+    private var holdWobble = 0.4f
 
     private var screenWidth = 1080
     private var screenHeight = 2400
@@ -82,13 +86,12 @@ class MouseAccessibilityService : AccessibilityService() {
 
     private val watchTimeoutRunnable = Runnable {
         isWatchAppOpen = false
-        resetScrollState()
+        abortScrollSession()
         setStealthState(false)
     }
 
     private val scrollHoldTimeoutRunnable = Runnable {
-        isScrollHolding = false
-        setCursorDragVisual(false)
+        abortScrollSession()
     }
 
     private val frameCallback = object : Choreographer.FrameCallback {
@@ -126,7 +129,11 @@ class MouseAccessibilityService : AccessibilityService() {
 
         override fun onCancelled(gestureDescription: GestureDescription?) {
             mainHandler.post {
-                resetScrollState()
+                activeScrollStroke = null
+                isScrollStrokeActive = false
+                if (isScrollHolding && hypot(pendingScrollDx, pendingScrollDy) >= 0.5f) {
+                    startContinuousScrollStroke()
+                }
             }
         }
     }
@@ -169,7 +176,7 @@ class MouseAccessibilityService : AccessibilityService() {
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
-        resetScrollState()
+        abortScrollSession()
         setStealthState(false)
         removeOverlays()
         instance = null
@@ -177,7 +184,7 @@ class MouseAccessibilityService : AccessibilityService() {
     }
 
     override fun onDestroy() {
-        resetScrollState()
+        abortScrollSession()
         setStealthState(false)
         removeOverlays()
         instance = null
@@ -190,8 +197,7 @@ class MouseAccessibilityService : AccessibilityService() {
     private fun setCursorDragVisual(dragging: Boolean) {
         if (isCursorDragging != dragging) {
             isCursorDragging = dragging
-            cursorView?.invalidate()
-            updateCursorLayoutPosition()
+            cursorView?.postInvalidate()
         }
     }
 
@@ -199,9 +205,8 @@ class MouseAccessibilityService : AccessibilityService() {
         val view = cursorView ?: return
         val wm = windowManager ?: return
         if (!::cursorParams.isInitialized) return
-        val offset = if (isCursorDragging) -24 else 2
-        val newX = cursorX.roundToInt() + offset
-        val newY = cursorY.roundToInt() + offset
+        val newX = cursorX.roundToInt() - 18
+        val newY = cursorY.roundToInt() - 4
         if (cursorParams.x != newX || cursorParams.y != newY) {
             cursorParams.x = newX
             cursorParams.y = newY
@@ -211,7 +216,7 @@ class MouseAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun resetScrollState() {
+    private fun abortScrollSession() {
         mainHandler.removeCallbacks(scrollHoldTimeoutRunnable)
         isScrollHolding = false
         isScrollStrokeActive = false
@@ -244,50 +249,43 @@ class MouseAccessibilityService : AccessibilityService() {
                 private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = Color.BLACK
                     style = Paint.Style.STROKE
-                    strokeWidth = 4f
+                    strokeWidth = 3.6f
                     strokeJoin = Paint.Join.ROUND
+                    strokeCap = Paint.Cap.ROUND
                 }
                 private val arrowPath = Path().apply {
-                    moveTo(2f, 2f)
-                    lineTo(2f, 42f)
-                    lineTo(14f, 32f)
-                    lineTo(24f, 50f)
-                    lineTo(31f, 46f)
-                    lineTo(21f, 28f)
-                    lineTo(36f, 28f)
+                    moveTo(18f, 4f)
+                    lineTo(18f, 44f)
+                    lineTo(30f, 34f)
+                    lineTo(40f, 52f)
+                    lineTo(47f, 48f)
+                    lineTo(37f, 30f)
+                    lineTo(52f, 30f)
                     close()
                 }
-                private val dragPath = Path().apply {
-                    moveTo(24f, 2f)
-                    lineTo(33f, 12f)
-                    lineTo(27f, 12f)
-                    lineTo(27f, 21f)
-                    lineTo(36f, 21f)
-                    lineTo(36f, 15f)
-                    lineTo(46f, 24f)
-                    lineTo(36f, 33f)
-                    lineTo(36f, 27f)
-                    lineTo(27f, 27f)
-                    lineTo(27f, 36f)
-                    lineTo(33f, 36f)
-                    lineTo(24f, 46f)
-                    lineTo(15f, 36f)
-                    lineTo(21f, 36f)
-                    lineTo(21f, 27f)
-                    lineTo(12f, 27f)
-                    lineTo(12f, 33f)
-                    lineTo(2f, 24f)
-                    lineTo(12f, 15f)
-                    lineTo(12f, 21f)
-                    lineTo(21f, 21f)
-                    lineTo(21f, 12f)
-                    lineTo(15f, 12f)
+                private val fingerPath = Path().apply {
+                    moveTo(18f, 4f)
+                    lineTo(22f, 8f)
+                    lineTo(22f, 22f)
+                    lineTo(29f, 20f)
+                    lineTo(29f, 24f)
+                    lineTo(36f, 22f)
+                    lineTo(36f, 26f)
+                    lineTo(42f, 25f)
+                    lineTo(42f, 38f)
+                    lineTo(37f, 48f)
+                    lineTo(15f, 48f)
+                    lineTo(10f, 38f)
+                    lineTo(4f, 29f)
+                    lineTo(8f, 24f)
+                    lineTo(14f, 30f)
+                    lineTo(14f, 8f)
                     close()
                 }
 
                 override fun onDraw(canvas: Canvas) {
                     super.onDraw(canvas)
-                    val activePath = if (isCursorDragging) dragPath else arrowPath
+                    val activePath = if (isCursorDragging) fingerPath else arrowPath
                     canvas.drawPath(activePath, fillPaint)
                     canvas.drawPath(activePath, strokePaint)
                 }
@@ -306,8 +304,8 @@ class MouseAccessibilityService : AccessibilityService() {
                 PixelFormat.TRANSLUCENT
             ).apply {
                 gravity = Gravity.TOP or Gravity.START
-                x = cursorX.roundToInt() + 2
-                y = cursorY.roundToInt() + 2
+                x = cursorX.roundToInt() - 18
+                y = cursorY.roundToInt() - 4
             }
 
             stealthView = View(this).apply {
@@ -348,7 +346,7 @@ class MouseAccessibilityService : AccessibilityService() {
         mainHandler.removeCallbacks(scrollHoldTimeoutRunnable)
         mainHandler.post {
             isAnimatingCursor = false
-            resetScrollState()
+            abortScrollSession()
             Choreographer.getInstance().removeFrameCallback(frameCallback)
             cursorView?.let {
                 try { windowManager?.removeView(it) } catch (_: Exception) {}
@@ -376,7 +374,7 @@ class MouseAccessibilityService : AccessibilityService() {
             wm.updateViewLayout(view, stealthParams)
         } catch (_: Exception) {}
 
-        val pokePath = Path().apply { moveTo(1f, 1f) }
+        val pokePath = Path().apply { moveTo(1f, 1f); lineTo(1.5f, 1f) }
         val stroke = GestureDescription.StrokeDescription(pokePath, 0, 5)
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
 
@@ -413,7 +411,7 @@ class MouseAccessibilityService : AccessibilityService() {
             isStealthActive = active
 
             if (active) {
-                resetScrollState()
+                abortScrollSession()
                 cursorView?.visibility = View.GONE
                 stealthView?.visibility = View.VISIBLE
                 try {
@@ -464,8 +462,7 @@ class MouseAccessibilityService : AccessibilityService() {
                         stealthParams.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
                     }
                 } catch (_: Exception) {}
-                val showCursor = isServiceMasterEnabled && isWatchAppOpen
-                cursorView?.visibility = if (showCursor) View.VISIBLE else View.GONE
+                updateOverlayVisibility()
                 if (stealthView?.visibility == View.VISIBLE) {
                     pokeDisplayBrightness(hideStealthAfterPoke = true)
                 } else {
@@ -478,7 +475,7 @@ class MouseAccessibilityService : AccessibilityService() {
     fun setMasterEnabled(enabled: Boolean) {
         isServiceMasterEnabled = enabled
         if (!enabled) {
-            resetScrollState()
+            abortScrollSession()
             setStealthState(false)
         } else {
             WearableMouseClient.getInstance(applicationContext).ensureListening()
@@ -486,21 +483,28 @@ class MouseAccessibilityService : AccessibilityService() {
         }
     }
 
-    fun setDragScrollMode(enabled: Boolean) {
+    fun setDragScrollMode(enabled: Boolean, modeOverride: String? = null) {
         isDragScrollEnabled = enabled
+        if (modeOverride != null) {
+            watchControlMode = modeOverride
+        }
         val prefs = getSharedPreferences("bandmouse_prefs", Context.MODE_PRIVATE)
         prefs.edit().putBoolean("drag_scroll", enabled).apply()
+        updateOverlayVisibility()
     }
 
-    fun onWatchStateChanged(open: Boolean) {
+    fun onWatchStateChanged(open: Boolean, modeOverride: String? = null) {
         mainHandler.post {
             mainHandler.removeCallbacks(watchTimeoutRunnable)
+            if (modeOverride != null) {
+                watchControlMode = modeOverride
+            }
             isWatchAppOpen = open
             if (open) {
                 mainHandler.postDelayed(watchTimeoutRunnable, 5000L)
                 updateOverlayVisibility()
             } else {
-                resetScrollState()
+                abortScrollSession()
                 setStealthState(false)
             }
         }
@@ -525,7 +529,8 @@ class MouseAccessibilityService : AccessibilityService() {
 
     private fun updateOverlayVisibility() {
         mainHandler.post {
-            val showCursor = isServiceMasterEnabled && isWatchAppOpen && !isStealthActive
+            val isScrollOnlyMode = watchControlMode == "scroll"
+            val showCursor = isServiceMasterEnabled && isWatchAppOpen && !isStealthActive && !isScrollOnlyMode
             cursorView?.visibility = if (showCursor) View.VISIBLE else View.GONE
             if (!isStealthActive) {
                 stealthView?.visibility = View.GONE
@@ -537,332 +542,10 @@ class MouseAccessibilityService : AccessibilityService() {
         if (!isServiceMasterEnabled || isStealthActive) return
         onWatchHeartbeat()
         mainHandler.post {
+            if (watchControlMode == "scroll") {
+                watchControlMode = "cursor"
+                updateOverlayVisibility()
+            }
             val metrics = resources.displayMetrics
             screenWidth = metrics.widthPixels
-            screenHeight = metrics.heightPixels
-
-            val nextTarget = MouseEngine.computeLinearCursorTarget(
-                targetX,
-                targetY,
-                dx,
-                dy,
-                cursorSensitivity,
-                screenWidth,
-                screenHeight
-            )
-            targetX = nextTarget.first
-            targetY = nextTarget.second
-
-            if (!isAnimatingCursor) {
-                isAnimatingCursor = true
-                Choreographer.getInstance().postFrameCallback(frameCallback)
-            }
-        }
-    }
-
-    fun performClick() {
-        if (!isServiceMasterEnabled || isStealthActive) return
-        onWatchHeartbeat()
-        mainHandler.post {
-            resetScrollState()
-            cursorX = targetX
-            cursorY = targetY
-            val path = Path().apply {
-                moveTo(targetX, targetY)
-            }
-            val stroke = GestureDescription.StrokeDescription(path, 0, 45)
-            val gesture = GestureDescription.Builder().addStroke(stroke).build()
-            dispatchGesture(gesture, null, null)
-        }
-    }
-
-    fun performScrollStart(dragOverride: Boolean?) {
-        if (!isServiceMasterEnabled || isStealthActive) return
-        onWatchHeartbeat()
-        mainHandler.post {
-            if (dragOverride != null && dragOverride != isDragScrollEnabled) {
-                setDragScrollMode(dragOverride)
-            }
-            mainHandler.removeCallbacks(scrollHoldTimeoutRunnable)
-            mainHandler.postDelayed(scrollHoldTimeoutRunnable, 1200L)
-            isScrollHolding = true
-            setCursorDragVisual(true)
-
-            if (isDragScrollEnabled && !isScrollStrokeActive) {
-                startContinuousScrollStroke()
-            }
-        }
-    }
-
-    fun performScrollHold(dragOverride: Boolean?) {
-        if (!isServiceMasterEnabled || isStealthActive) return
-        onWatchHeartbeat()
-        mainHandler.post {
-            if (dragOverride != null && dragOverride != isDragScrollEnabled) {
-                setDragScrollMode(dragOverride)
-            }
-            mainHandler.removeCallbacks(scrollHoldTimeoutRunnable)
-            mainHandler.postDelayed(scrollHoldTimeoutRunnable, 1200L)
-            isScrollHolding = true
-            setCursorDragVisual(true)
-        }
-    }
-
-    fun performScrollMove(dx: Int, dy: Int, dragOverride: Boolean?) {
-        if (!isServiceMasterEnabled || isStealthActive) return
-        onWatchHeartbeat()
-        mainHandler.post {
-            if (dragOverride != null && dragOverride != isDragScrollEnabled) {
-                setDragScrollMode(dragOverride)
-            }
-            mainHandler.removeCallbacks(scrollHoldTimeoutRunnable)
-            mainHandler.postDelayed(scrollHoldTimeoutRunnable, 1200L)
-            isScrollHolding = true
-            setCursorDragVisual(true)
-
-            val scaled = MouseEngine.computeScrollDelta(dx, dy, scrollMultiplier)
-            pendingScrollDx += scaled.first
-            pendingScrollDy += scaled.second
-
-            if (!isScrollStrokeActive) {
-                startContinuousScrollStroke()
-            }
-        }
-    }
-
-    fun performScrollEnd() {
-        if (!isServiceMasterEnabled || isStealthActive) return
-        onWatchHeartbeat()
-        mainHandler.post {
-            mainHandler.removeCallbacks(scrollHoldTimeoutRunnable)
-            isScrollHolding = false
-            setCursorDragVisual(false)
-        }
-    }
-
-    private fun startContinuousScrollStroke() {
-        val metrics = resources.displayMetrics
-        screenWidth = metrics.widthPixels
-        screenHeight = metrics.heightPixels
-
-        val dx = pendingScrollDx
-        val dy = pendingScrollDy
-        pendingScrollDx = 0f
-        pendingScrollDy = 0f
-
-        if (isDragScrollEnabled) {
-            val dragStep = MouseEngine.computeRealCursorDragStep(
-                targetX,
-                targetY,
-                dx,
-                dy,
-                screenWidth,
-                screenHeight
-            )
-            scrollCurX = dragStep.endX
-            scrollCurY = dragStep.endY
-            targetX = scrollCurX
-            targetY = scrollCurY
-            cursorX = scrollCurX
-            cursorY = scrollCurY
-            updateCursorLayoutPosition()
-
-            val path = Path().apply {
-                moveTo(dragStep.startX, dragStep.startY)
-                lineTo(dragStep.endX, dragStep.endY)
-            }
-            val stroke = GestureDescription.StrokeDescription(path, 0, 40, true)
-            activeScrollStroke = stroke
-            isScrollStrokeActive = true
-            val gesture = GestureDescription.Builder().addStroke(stroke).build()
-            if (!dispatchGesture(gesture, scrollGestureCallback, null)) {
-                resetScrollState()
-            }
-            return
-        }
-
-        val dist = hypot(dx, dy)
-        if (dist < 0.8f) {
-            isScrollStrokeActive = false
-            return
-        }
-
-        val startX = screenWidth / 2f
-        val startY = screenHeight / 2f
-        val touchSlop = ViewConfiguration.get(this).scaledTouchSlop.toFloat()
-        val step = MouseEngine.computeInitialScrollStep(
-            startX,
-            startY,
-            dx,
-            dy,
-            touchSlop,
-            screenWidth,
-            screenHeight
-        )
-
-        scrollCurX = step.endX
-        scrollCurY = step.endY
-
-        val path = Path().apply {
-            moveTo(step.startX, step.startY)
-            lineTo(step.endX, step.endY)
-        }
-
-        val stroke = GestureDescription.StrokeDescription(path, 0, 42, true)
-        activeScrollStroke = stroke
-        isScrollStrokeActive = true
-
-        val gesture = GestureDescription.Builder().addStroke(stroke).build()
-        if (!dispatchGesture(gesture, scrollGestureCallback, null)) {
-            resetScrollState()
-        }
-    }
-
-    private fun onContinuousScrollSliceCompleted() {
-        val prevStroke = activeScrollStroke
-        if (prevStroke == null) {
-            isScrollStrokeActive = false
-            if (isScrollHolding && (isDragScrollEnabled || hypot(pendingScrollDx, pendingScrollDy) >= 1f)) {
-                startContinuousScrollStroke()
-            } else if (!isScrollHolding) {
-                setCursorDragVisual(false)
-            }
-            return
-        }
-
-        if (!isScrollHolding) {
-            val stopPath = Path().apply {
-                moveTo(scrollCurX, scrollCurY)
-                lineTo(scrollCurX, scrollCurY)
-            }
-            activeScrollStroke = null
-            pendingScrollDx = 0f
-            pendingScrollDy = 0f
-            setCursorDragVisual(false)
-            try {
-                val finalStroke = prevStroke.continueStroke(stopPath, 0, 16, false)
-                val gesture = GestureDescription.Builder().addStroke(finalStroke).build()
-                if (!dispatchGesture(gesture, scrollGestureCallback, null)) {
-                    resetScrollState()
-                }
-            } catch (_: Exception) {
-                resetScrollState()
-            }
-            return
-        }
-
-        val stepX = pendingScrollDx
-        val stepY = pendingScrollDy
-        pendingScrollDx = 0f
-        pendingScrollDy = 0f
-
-        val metrics = resources.displayMetrics
-        screenWidth = metrics.widthPixels
-        screenHeight = metrics.heightPixels
-
-        if (isDragScrollEnabled) {
-            val dragStep = MouseEngine.computeRealCursorDragStep(
-                scrollCurX,
-                scrollCurY,
-                stepX,
-                stepY,
-                screenWidth,
-                screenHeight
-            )
-            val path = Path().apply {
-                moveTo(dragStep.startX, dragStep.startY)
-                lineTo(dragStep.endX, dragStep.endY)
-            }
-            scrollCurX = dragStep.endX
-            scrollCurY = dragStep.endY
-            targetX = scrollCurX
-            targetY = scrollCurY
-            cursorX = scrollCurX
-            cursorY = scrollCurY
-            updateCursorLayoutPosition()
-
-            try {
-                val nextStroke = prevStroke.continueStroke(path, 0, 40, true)
-                activeScrollStroke = nextStroke
-                val gesture = GestureDescription.Builder().addStroke(nextStroke).build()
-                if (!dispatchGesture(gesture, scrollGestureCallback, null)) {
-                    resetScrollState()
-                }
-            } catch (_: Exception) {
-                resetScrollState()
-            }
-            return
-        }
-
-        val contStep = MouseEngine.computeContinuationScrollStep(
-            scrollCurX,
-            scrollCurY,
-            stepX,
-            stepY,
-            screenWidth,
-            screenHeight
-        )
-
-        if (contStep.needsRecycle) {
-            pendingScrollDx = stepX
-            pendingScrollDy = stepY
-            val stopPath = Path().apply {
-                moveTo(scrollCurX, scrollCurY)
-                lineTo(scrollCurX, scrollCurY)
-            }
-            activeScrollStroke = null
-            try {
-                val finalStroke = prevStroke.continueStroke(stopPath, 0, 14, false)
-                val gesture = GestureDescription.Builder().addStroke(finalStroke).build()
-                if (!dispatchGesture(gesture, scrollGestureCallback, null)) {
-                    resetScrollState()
-                }
-            } catch (_: Exception) {
-                resetScrollState()
-            }
-            return
-        }
-
-        val path = Path().apply {
-            moveTo(contStep.startX, contStep.startY)
-            lineTo(contStep.endX, contStep.endY)
-        }
-        scrollCurX = contStep.endX
-        scrollCurY = contStep.endY
-
-        try {
-            val nextStroke = prevStroke.continueStroke(path, 0, 42, true)
-            activeScrollStroke = nextStroke
-            val gesture = GestureDescription.Builder().addStroke(nextStroke).build()
-            if (!dispatchGesture(gesture, scrollGestureCallback, null)) {
-                resetScrollState()
-            }
-        } catch (_: Exception) {
-            resetScrollState()
-        }
-    }
-
-    fun performBack() {
-        if (!isServiceMasterEnabled || isStealthActive) return
-        onWatchHeartbeat()
-        mainHandler.post {
-            performGlobalAction(GLOBAL_ACTION_BACK)
-        }
-    }
-
-    fun performHome() {
-        if (!isServiceMasterEnabled || isStealthActive) return
-        onWatchHeartbeat()
-        mainHandler.post {
-            performGlobalAction(GLOBAL_ACTION_HOME)
-        }
-    }
-
-    fun performRecents() {
-        if (!isServiceMasterEnabled || isStealthActive) return
-        onWatchHeartbeat()
-        mainHandler.post {
-            performGlobalAction(GLOBAL_ACTION_RECENTS)
-        }
-    }
-}
+            screenHeight = metrics.
