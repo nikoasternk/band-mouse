@@ -3,9 +3,39 @@ import WearableBridge from './services/WearableBridge'
 import storage from '@system.storage'
 import brightness from '@system.brightness'
 import vibrator from '@system.vibrator'
+import device from '@system.device'
 import { pctToHardwareBrightness } from './services/Localization'
 
 globalThis.wearableBridge = new WearableBridge();
+
+globalThis.watchTouchPpi = 326;
+
+globalThis.detectWatchPpi = () => {
+  try {
+    device.getInfo({
+      success: (info) => {
+        const density = Number(info && info.screenDensity);
+        const width = Number(info && info.screenWidth);
+        const rawPpi = (density >= 1.4 && density <= 4.0) ? (density * 160) : 326;
+        const touchPpi = (width > 0) ? (rawPpi * (212 / width)) : rawPpi;
+        globalThis.watchTouchPpi = Math.round(touchPpi * 10) / 10;
+        if (globalThis.wearableBridge) {
+          const cfg = globalThis.mouseConfig;
+          globalThis.wearableBridge.sendPacket({
+            tag: 'mouse',
+            act: 'state',
+            open: true,
+            mode: cfg.controlMode || 'cursor',
+            drag: cfg.dragScroll !== false,
+            brightOn: cfg.phoneBrightnessOn === true,
+            brightPct: cfg.phoneBrightnessPct !== undefined ? cfg.phoneBrightnessPct : 50,
+            ppi: globalThis.watchTouchPpi
+          });
+        }
+      }
+    });
+  } catch (e) {}
+};
 
 globalThis.mouseConfig = {
   language: 'auto',
@@ -110,7 +140,8 @@ globalThis.notifyPageShown = () => {
       mode: cfg.controlMode || 'cursor',
       drag: cfg.dragScroll !== false,
       brightOn: cfg.phoneBrightnessOn === true,
-      brightPct: cfg.phoneBrightnessPct !== undefined ? cfg.phoneBrightnessPct : 50
+      brightPct: cfg.phoneBrightnessPct !== undefined ? cfg.phoneBrightnessPct : 50,
+      ppi: globalThis.watchTouchPpi
     });
   }
   if (!pingTimer) {
@@ -159,6 +190,7 @@ globalThis.forceCloseWatchApp = (appInstance) => {
 export default {
   onCreate() {
     globalThis.loadMouseConfig();
+    globalThis.detectWatchPpi();
   },
   onDestroy() {
     if (pingTimer) clearInterval(pingTimer);
