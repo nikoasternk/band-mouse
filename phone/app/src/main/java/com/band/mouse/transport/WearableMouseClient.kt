@@ -48,13 +48,20 @@ class WearableMouseClient private constructor(context: Context) {
             is WatchCommand.ScrollHold -> MouseAccessibilityService.instance?.performScrollHold(cmd.dragCursor, cmd.mode)
             is WatchCommand.ScrollEnd -> MouseAccessibilityService.instance?.performScrollEnd()
             is WatchCommand.ScrollModeConfig -> MouseAccessibilityService.instance?.setDragScrollMode(cmd.dragCursor, cmd.mode)
+            is WatchCommand.PhoneBrightness -> MouseAccessibilityService.instance?.setPhoneBrightnessFromWatch(cmd.enabled, cmd.pct)
             is WatchCommand.Tap -> MouseAccessibilityService.instance?.performClick()
             is WatchCommand.Back -> MouseAccessibilityService.instance?.performBack()
             is WatchCommand.Home -> MouseAccessibilityService.instance?.performHome()
             is WatchCommand.Recents -> MouseAccessibilityService.instance?.performRecents()
             is WatchCommand.Stealth -> MouseAccessibilityService.instance?.toggleStealthMode()
             is WatchCommand.Ping -> MouseAccessibilityService.instance?.onWatchHeartbeat()
-            is WatchCommand.State -> MouseAccessibilityService.instance?.onWatchStateChanged(cmd.open, cmd.mode)
+            is WatchCommand.State -> MouseAccessibilityService.instance?.onWatchStateChanged(
+                cmd.open,
+                cmd.mode,
+                cmd.dragCursor,
+                cmd.brightOn,
+                cmd.brightPct
+            )
             is WatchCommand.Handshake -> {
                 if (cmd.step > 0) {
                     handshakeDeferred?.complete(true)
