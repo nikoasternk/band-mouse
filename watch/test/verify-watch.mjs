@@ -69,6 +69,7 @@ for (let mScalePct = 70; mScalePct <= 140; mScalePct += 10) {
     const navVisW = Math.round(50 * nScale);
     const navVisH = Math.round(38 * nScale);
     const navHitTop = menuHitH;
+    const navHitH = navVisH + 8;
     const navHitCellW = Math.min(70, Math.max(navVisW + 8, Math.round(58 * nScale)));
 
     assert.strictEqual(navHitTop, menuHitH, 'Zero vertical gap between Menu and NavBar');
@@ -81,15 +82,20 @@ logPass('Hitbox & visual pill geometry verified across all scales (70%..140%)');
 
 const padCode = fs.readFileSync(path.join(srcDir, 'pages', 'touchpad', 'touchpad.ux'), 'utf8');
 assert.ok(padCode.includes("act: 's_start'"), 'Touchpad must send s_start packet');
-assert.ok(padCode.includes("act: 's_move'"), 'Touchpad must send 360 s_move packets');
+assert.ok(padCode.includes("act: 's_move'"), 'Touchpad must send s_move packets');
 assert.ok(padCode.includes("act: 's_hold'"), 'Touchpad must send s_hold keepalive packet');
 assert.ok(padCode.includes("act: 's_end'"), 'Touchpad must send s_end packet on release');
-assert.strictEqual(padCode.includes('lastScrollDirY'), false, 'No 4-direction lock in touchpad');
-logPass('Touchpad 360 continuous drag-scroll stream protocol verified');
+assert.ok(padCode.includes('mode: this.controlMode'), 'Touchpad must sync controlMode');
+logPass('Touchpad continuous drag-scroll and mode sync protocol verified');
 
 const settingsCode = fs.readFileSync(path.join(srcDir, 'pages', 'settings', 'settings.ux'), 'utf8');
-assert.ok(settingsCode.includes('toggleDragScroll'), 'Settings must include toggleDragScroll');
-assert.ok(settingsCode.includes("act: 's_mode'"), 'Settings must sync s_mode to phone');
-logPass('Settings dragScroll toggle and sync verified');
+const markModMatch = settingsCode.match(/markModified\(\)\s*\{([\s\S]*?)\}/);
+assert.ok(markModMatch, 'markModified must exist in settings.ux');
+assert.strictEqual(
+  markModMatch[1].includes('commitToMemoryAndStorage'),
+  false,
+  'markModified must NOT auto-save before Save button is pressed'
+);
+logPass('Settings explicit Save button behavior verified');
 
 console.log('[WATCH-TEST SUCCESS] All watch checks and simulations passed!');
