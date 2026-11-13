@@ -10,9 +10,11 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.util.DisplayMetrics
 import android.view.Choreographer
 import android.view.Gravity
 import android.view.View
@@ -34,10 +36,10 @@ class MouseAccessibilityService : AccessibilityService() {
             private set
 
         @Volatile
-        var cursorSensitivity: Float = 3.0f
+        var cursorDpi: Int = MouseEngine.DEFAULT_DPI
 
         @Volatile
-        var scrollMultiplier: Float = 8.0f
+        var scrollDpi: Int = MouseEngine.DEFAULT_DPI
 
         @Volatile
         var isServiceMasterEnabled: Boolean = true
@@ -53,6 +55,12 @@ class MouseAccessibilityService : AccessibilityService() {
 
         @Volatile
         var isStealthActive: Boolean = false
+
+        @Volatile
+        var isCustomPhoneBrightnessEnabled: Boolean = false
+
+        @Volatile
+        var customPhoneBrightnessPct: Int = 50
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -70,6 +78,8 @@ class MouseAccessibilityService : AccessibilityService() {
     private var cursorY = 1000f
     private var targetX = 500f
     private var targetY = 1000f
+    private var containerOffsetX = 0f
+    private var containerOffsetY = 0f
     private var lastFrameTimeNanos = 0L
     private var isAnimatingCursor = false
     private var isCursorDragging = false
@@ -93,7 +103,9 @@ class MouseAccessibilityService : AccessibilityService() {
     private val watchTimeoutRunnable = Runnable {
         isWatchAppOpen = false
         abortScrollSession()
-        setStealthState(false)
+        isStealthActive = false
+        syncPhoneBrightnessState()
+        updateOverlayVisibility()
     }
 
     private val scrollHoldTimeoutRunnable = Runnable {
@@ -128,14 +140,12 @@ class MouseAccessibilityService : AccessibilityService() {
             cursorX = stepped.first
             cursorY = stepped.second
 
-            sprite.translationX = cursorX - 18f
-            sprite.translationY = cursorY - 4f
+            applySpriteTranslation()
 
             if (abs(targetX - cursorX) < 0.15f && abs(targetY - cursorY) < 0.15f) {
                 cursorX = targetX
                 cursorY = targetY
-                sprite.translationX = cursorX - 18f
-                sprite.translationY = cursorY - 4f
+                applySpriteTranslation()
                 isAnimatingCursor = false
                 lastFrameTimeNanos = 0L
             } else {
@@ -161,8 +171,8 @@ class MouseAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         val prefs = getSharedPreferences("bandmouse_prefs", Context.MODE_PRIVATE)
-        cursorSensitivity = prefs.getFloat("sensitivity", 3.0f)
-        scrollMultiplier = prefs.getFloat("scroll_mult", 8.0f)
+        cursorDpi = prefs.getInt("cursor_dpi", MouseEngine.DEFAULT_DPI)
+        scrollDpi = prefs.getInt("scroll_dpi", MouseEngine.DEFAULT_DPI)
         isServiceMasterEnabled = prefs.getBoolean("master_enabled", true)
         isDragScrollEnabled = prefs.getBoolean("drag_scroll", true)
         instance = this
@@ -173,17 +183,14 @@ class MouseAccessibilityService : AccessibilityService() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         mainHandler.post {
-            val metrics = resources.displayMetrics
-            screenWidth = metrics.widthPixels
-            screenHeight = metrics.heightPixels
+            updatePhysicalScreenSize()
             targetX = targetX.coerceIn(0f, (screenWidth - 1).toFloat())
             targetY = targetY.coerceIn(0f, (screenHeight - 1).toFloat())
             cursorX = targetX
             cursorY = targetY
             filterX.reset(cursorX)
             filterY.reset(cursorY)
-            cursorSpriteView?.translationX = cursorX - 18f
-            cursorSpriteView?.translationY = cursorY - 4f
+            applySpriteTranslation()
 
             if (::stealthParams.isInitialized) {
                 val bounds = MouseEngine.computeStealthOverlayBounds(screenWidth, screenHeight)
@@ -200,7 +207,9 @@ class MouseAccessibilityService : AccessibilityService() {
 
     override fun onUnbind(intent: Intent?): Boolean {
         abortScrollSession()
-        setStealthState(false)
+        isStealthActive = false
+        isWatchAppOpen = false
+        syncPhoneBrightnessState()
         removeOverlays()
         instance = null
         return super.onUnbind(intent)
@@ -208,7 +217,9 @@ class MouseAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         abortScrollSession()
-        setStealthState(false)
+        isStealthActive = false
+        isWatchAppOpen = false
+        syncPhoneBrightnessState()
         removeOverlays()
         instance = null
         super.onDestroy()
@@ -216,6 +227,42 @@ class MouseAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
     override fun onInterrupt() {}
+
+    private fun updatePhysicalScreenSize() {
+        val wm = windowManager ?: (getSystemService(Context.WINDOW_SERVICE) as WindowManager)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = wm.maximumWindowMetrics.bounds
+            screenWidth = bounds.width().coerceAtLeast(1)
+            screenHeight = bounds.height().coerceAtLeast(1)
+        } else {
+            val dm = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay.getRealMetrics(dm)
+            screenWidth = dm.widthPixels.coerceAtLeast(1)
+            screenHeight = dm.heightPixels.coerceAtLeast(1)
+        }
+    }
+
+    private fun applyCutoutMode(params: WindowManager.LayoutParams) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+    }
+
+    private fun applySpriteTranslation() {
+        val sprite = cursorSpriteView ?: return
+        val container = cursorContainer
+        if (container != null && container.isAttachedToWindow) {
+            val loc = IntArray(2)
+            container.getLocationOnScreen(loc)
+            containerOffsetX = loc[0].toFloat()
+            containerOffsetY = loc[1].toFloat()
+        }
+        sprite.translationX = cursorX - 18f - containerOffsetX
+        sprite.translationY = cursorY - 4f - containerOffsetY
+    }
 
     private fun setCursorDragVisual(dragging: Boolean) {
         if (isCursorDragging != dragging) {
@@ -249,9 +296,7 @@ class MouseAccessibilityService : AccessibilityService() {
             val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
             windowManager = wm
 
-            val metrics = resources.displayMetrics
-            screenWidth = metrics.widthPixels
-            screenHeight = metrics.heightPixels
+            updatePhysicalScreenSize()
             cursorX = screenWidth / 2f
             cursorY = screenHeight / 2f
             targetX = cursorX
@@ -283,6 +328,7 @@ class MouseAccessibilityService : AccessibilityService() {
                 }
                 private val fingerPath = Path().apply {
                     moveTo(18f, 4f)
+                    lineTo(20f, 5f)
                     lineTo(22f, 8f)
                     lineTo(22f, 22f)
                     lineTo(29f, 20f)
@@ -298,6 +344,7 @@ class MouseAccessibilityService : AccessibilityService() {
                     lineTo(8f, 24f)
                     lineTo(14f, 30f)
                     lineTo(14f, 8f)
+                    lineTo(16f, 5f)
                     close()
                 }
 
@@ -307,9 +354,6 @@ class MouseAccessibilityService : AccessibilityService() {
                     canvas.drawPath(activePath, fillPaint)
                     canvas.drawPath(activePath, strokePaint)
                 }
-            }.apply {
-                translationX = cursorX - 18f
-                translationY = cursorY - 4f
             }
 
             cursorSpriteView = sprite
@@ -318,6 +362,13 @@ class MouseAccessibilityService : AccessibilityService() {
                 clipChildren = false
                 clipToPadding = false
                 addView(sprite, FrameLayout.LayoutParams(64, 64))
+                addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+                    val loc = IntArray(2)
+                    v.getLocationOnScreen(loc)
+                    containerOffsetX = loc[0].toFloat()
+                    containerOffsetY = loc[1].toFloat()
+                    applySpriteTranslation()
+                }
                 visibility = View.GONE
             }
 
@@ -334,6 +385,8 @@ class MouseAccessibilityService : AccessibilityService() {
                 gravity = Gravity.TOP or Gravity.START
                 x = 0
                 y = 0
+                screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                applyCutoutMode(this)
             }
 
             stealthView = View(this).apply {
@@ -358,6 +411,7 @@ class MouseAccessibilityService : AccessibilityService() {
                 x = stealthBounds.x
                 y = stealthBounds.y
                 screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                applyCutoutMode(this)
             }
 
             try {
@@ -365,6 +419,7 @@ class MouseAccessibilityService : AccessibilityService() {
                 wm.addView(stealthView, stealthParams)
             } catch (_: Exception) {}
 
+            applySpriteTranslation()
             updateOverlayVisibility()
         }
     }
@@ -393,10 +448,8 @@ class MouseAccessibilityService : AccessibilityService() {
         val view = stealthView ?: return
         val wm = windowManager ?: return
         try {
-            val bounds = MouseEngine.computeStealthOverlayBounds(
-                resources.displayMetrics.widthPixels,
-                resources.displayMetrics.heightPixels
-            )
+            updatePhysicalScreenSize()
+            val bounds = MouseEngine.computeStealthOverlayBounds(screenWidth, screenHeight)
             stealthParams.width = bounds.width
             stealthParams.height = bounds.height
             stealthParams.x = bounds.x
@@ -432,9 +485,90 @@ class MouseAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun syncPhoneBrightnessState() {
+        val shouldStealth = isStealthActive
+        val shouldCustom = !isStealthActive && isServiceMasterEnabled && isWatchAppOpen && isCustomPhoneBrightnessEnabled
+
+        if (shouldStealth || shouldCustom) {
+            try {
+                if (!isBrightnessOverridden && Settings.System.canWrite(this)) {
+                    savedBrightnessMode = Settings.System.getInt(
+                        contentResolver,
+                        Settings.System.SCREEN_BRIGHTNESS_MODE,
+                        Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
+                    )
+                    savedBrightnessValue = Settings.System.getInt(
+                        contentResolver,
+                        Settings.System.SCREEN_BRIGHTNESS,
+                        128
+                    )
+                    isBrightnessOverridden = true
+                }
+                if (Settings.System.canWrite(this)) {
+                    Settings.System.putInt(
+                        contentResolver,
+                        Settings.System.SCREEN_BRIGHTNESS_MODE,
+                        Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+                    )
+                    val targetSysVal = if (shouldStealth) {
+                        0
+                    } else {
+                        ((customPhoneBrightnessPct.coerceIn(0, 100) * 255) / 100).coerceIn(0, 255)
+                    }
+                    Settings.System.putInt(
+                        contentResolver,
+                        Settings.System.SCREEN_BRIGHTNESS,
+                        targetSysVal
+                    )
+                }
+            } catch (_: Exception) {}
+
+            if (::stealthParams.isInitialized) {
+                stealthParams.screenBrightness = if (shouldStealth) 0.0f else WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            }
+            if (::cursorParams.isInitialized) {
+                cursorParams.screenBrightness = if (shouldCustom) {
+                    (customPhoneBrightnessPct.coerceIn(0, 100) / 100f).coerceAtLeast(0.005f)
+                } else {
+                    WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                }
+                cursorContainer?.let {
+                    try { windowManager?.updateViewLayout(it, cursorParams) } catch (_: Exception) {}
+                }
+            }
+        } else {
+            try {
+                if (isBrightnessOverridden && Settings.System.canWrite(this)) {
+                    Settings.System.putInt(
+                        contentResolver,
+                        Settings.System.SCREEN_BRIGHTNESS,
+                        savedBrightnessValue
+                    )
+                    Settings.System.putInt(
+                        contentResolver,
+                        Settings.System.SCREEN_BRIGHTNESS_MODE,
+                        savedBrightnessMode
+                    )
+                    isBrightnessOverridden = false
+                }
+            } catch (_: Exception) {}
+
+            if (::stealthParams.isInitialized) {
+                stealthParams.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            }
+            if (::cursorParams.isInitialized) {
+                cursorParams.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                cursorContainer?.let {
+                    try { windowManager?.updateViewLayout(it, cursorParams) } catch (_: Exception) {}
+                }
+            }
+        }
+    }
+
     private fun setStealthState(active: Boolean) {
         mainHandler.post {
-            if (isStealthActive == active && (!active || isBrightnessOverridden)) {
+            if (isStealthActive == active) {
+                syncPhoneBrightnessState()
                 updateOverlayVisibility()
                 return@post
             }
@@ -444,54 +578,10 @@ class MouseAccessibilityService : AccessibilityService() {
                 abortScrollSession()
                 cursorContainer?.visibility = View.GONE
                 stealthView?.visibility = View.VISIBLE
-                try {
-                    if (!isBrightnessOverridden && Settings.System.canWrite(this)) {
-                        savedBrightnessMode = Settings.System.getInt(
-                            contentResolver,
-                            Settings.System.SCREEN_BRIGHTNESS_MODE,
-                            Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
-                        )
-                        savedBrightnessValue = Settings.System.getInt(
-                            contentResolver,
-                            Settings.System.SCREEN_BRIGHTNESS,
-                            128
-                        )
-                        Settings.System.putInt(
-                            contentResolver,
-                            Settings.System.SCREEN_BRIGHTNESS_MODE,
-                            Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
-                        )
-                        Settings.System.putInt(
-                            contentResolver,
-                            Settings.System.SCREEN_BRIGHTNESS,
-                            0
-                        )
-                        isBrightnessOverridden = true
-                    }
-                    if (::stealthParams.isInitialized) {
-                        stealthParams.screenBrightness = 0.0f
-                    }
-                } catch (_: Exception) {}
+                syncPhoneBrightnessState()
                 pokeDisplayBrightness(hideStealthAfterPoke = false)
             } else {
-                try {
-                    if (isBrightnessOverridden && Settings.System.canWrite(this)) {
-                        Settings.System.putInt(
-                            contentResolver,
-                            Settings.System.SCREEN_BRIGHTNESS,
-                            savedBrightnessValue
-                        )
-                        Settings.System.putInt(
-                            contentResolver,
-                            Settings.System.SCREEN_BRIGHTNESS_MODE,
-                            savedBrightnessMode
-                        )
-                        isBrightnessOverridden = false
-                    }
-                    if (::stealthParams.isInitialized) {
-                        stealthParams.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-                    }
-                } catch (_: Exception) {}
+                syncPhoneBrightnessState()
                 updateOverlayVisibility()
                 if (stealthView?.visibility == View.VISIBLE) {
                     pokeDisplayBrightness(hideStealthAfterPoke = true)
@@ -507,8 +597,10 @@ class MouseAccessibilityService : AccessibilityService() {
         if (!enabled) {
             abortScrollSession()
             setStealthState(false)
+            syncPhoneBrightnessState()
         } else {
             WearableMouseClient.getInstance(applicationContext).ensureListening()
+            syncPhoneBrightnessState()
             updateOverlayVisibility()
         }
     }
@@ -523,19 +615,45 @@ class MouseAccessibilityService : AccessibilityService() {
         updateOverlayVisibility()
     }
 
-    fun onWatchStateChanged(open: Boolean, modeOverride: String? = null) {
+    fun setPhoneBrightnessFromWatch(enabled: Boolean, pct: Int) {
+        mainHandler.post {
+            isCustomPhoneBrightnessEnabled = enabled
+            customPhoneBrightnessPct = pct.coerceIn(0, 100)
+            syncPhoneBrightnessState()
+            updateOverlayVisibility()
+        }
+    }
+
+    fun onWatchStateChanged(
+        open: Boolean,
+        modeOverride: String? = null,
+        dragOverride: Boolean? = null,
+        brightOnOverride: Boolean? = null,
+        brightPctOverride: Int? = null
+    ) {
         mainHandler.post {
             mainHandler.removeCallbacks(watchTimeoutRunnable)
             if (modeOverride != null) {
                 watchControlMode = modeOverride
             }
+            if (dragOverride != null) {
+                isDragScrollEnabled = dragOverride
+            }
+            if (brightOnOverride != null) {
+                isCustomPhoneBrightnessEnabled = brightOnOverride
+            }
+            if (brightPctOverride != null) {
+                customPhoneBrightnessPct = brightPctOverride.coerceIn(0, 100)
+            }
             isWatchAppOpen = open
             if (open) {
                 mainHandler.postDelayed(watchTimeoutRunnable, 5000L)
+                syncPhoneBrightnessState()
                 updateOverlayVisibility()
             } else {
                 abortScrollSession()
                 setStealthState(false)
+                syncPhoneBrightnessState()
             }
         }
     }
@@ -545,6 +663,7 @@ class MouseAccessibilityService : AccessibilityService() {
             mainHandler.removeCallbacks(watchTimeoutRunnable)
             if (!isWatchAppOpen) {
                 isWatchAppOpen = true
+                syncPhoneBrightnessState()
                 updateOverlayVisibility()
             }
             mainHandler.postDelayed(watchTimeoutRunnable, 5000L)
@@ -560,11 +679,13 @@ class MouseAccessibilityService : AccessibilityService() {
     private fun updateOverlayVisibility() {
         mainHandler.post {
             val isScrollOnlyMode = watchControlMode == "scroll"
-            val showCursor = isServiceMasterEnabled && isWatchAppOpen && !isStealthActive && !isScrollOnlyMode
-            cursorContainer?.visibility = if (showCursor) View.VISIBLE else View.GONE
-            if (showCursor) {
-                cursorSpriteView?.translationX = cursorX - 18f
-                cursorSpriteView?.translationY = cursorY - 4f
+            val needContainerForOverlay = isServiceMasterEnabled && isWatchAppOpen && !isStealthActive
+            val showSprite = needContainerForOverlay && !isScrollOnlyMode
+
+            cursorContainer?.visibility = if (needContainerForOverlay) View.VISIBLE else View.GONE
+            cursorSpriteView?.visibility = if (showSprite) View.VISIBLE else View.GONE
+            if (showSprite) {
+                applySpriteTranslation()
             }
             if (!isStealthActive) {
                 stealthView?.visibility = View.GONE
@@ -580,16 +701,14 @@ class MouseAccessibilityService : AccessibilityService() {
                 watchControlMode = "cursor"
                 updateOverlayVisibility()
             }
-            val metrics = resources.displayMetrics
-            screenWidth = metrics.widthPixels
-            screenHeight = metrics.heightPixels
+            updatePhysicalScreenSize()
 
             val nextTarget = MouseEngine.computeLinearCursorTarget(
                 targetX,
                 targetY,
                 dx,
                 dy,
-                cursorSensitivity,
+                cursorDpi,
                 screenWidth,
                 screenHeight
             )
@@ -608,8 +727,7 @@ class MouseAccessibilityService : AccessibilityService() {
             cursorY = targetY
             filterX.reset(cursorX)
             filterY.reset(cursorY)
-            cursorSpriteView?.translationX = cursorX - 18f
-            cursorSpriteView?.translationY = cursorY - 4f
+            applySpriteTranslation()
             val path = Path().apply {
                 moveTo(targetX, targetY)
                 lineTo(targetX + 0.3f, targetY)
@@ -670,15 +788,13 @@ class MouseAccessibilityService : AccessibilityService() {
             isScrollHolding = true
             setCursorDragVisual(true)
 
-            val metrics = resources.displayMetrics
-            screenWidth = metrics.widthPixels
-            screenHeight = metrics.heightPixels
+            updatePhysicalScreenSize()
 
             val useRealCursorDrag = isDragScrollEnabled && watchControlMode != "scroll"
             val scaled = if (useRealCursorDrag || watchControlMode == "scroll") {
-                MouseEngine.computeScrollDelta(dx, dy, scrollMultiplier)
+                MouseEngine.computeScrollDelta(dx, dy, scrollDpi)
             } else {
-                MouseEngine.computeFourWayScrollDelta(dx, dy, scrollMultiplier)
+                MouseEngine.computeFourWayScrollDelta(dx, dy, scrollDpi)
             }
 
             if (useRealCursorDrag) {
@@ -715,9 +831,7 @@ class MouseAccessibilityService : AccessibilityService() {
             return
         }
 
-        val metrics = resources.displayMetrics
-        screenWidth = metrics.widthPixels
-        screenHeight = metrics.heightPixels
+        updatePhysicalScreenSize()
 
         val takeRatio = 0.68f
         val dx = pendingScrollDx * takeRatio
@@ -831,9 +945,7 @@ class MouseAccessibilityService : AccessibilityService() {
 
         val sliceDuration = if (isIdleSlice) 20L else 44L
 
-        val metrics = resources.displayMetrics
-        screenWidth = metrics.widthPixels
-        screenHeight = metrics.heightPixels
+        updatePhysicalScreenSize()
 
         val useRealCursorDrag = isDragScrollEnabled && watchControlMode != "scroll"
         holdWobble = -holdWobble
