@@ -1,6 +1,8 @@
 package com.band.mouse.transport
 
 import android.content.Context
+import com.band.mouse.MouseEngine
+import com.band.mouse.WatchCommand
 import com.band.mouse.service.MouseAccessibilityService
 import com.xiaomi.xms.wearable.Wearable
 import com.xiaomi.xms.wearable.auth.Permission
@@ -15,7 +17,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
-import org.json.JSONTokener
 
 class WearableMouseClient private constructor(context: Context) {
 
@@ -40,63 +41,29 @@ class WearableMouseClient private constructor(context: Context) {
     private var handshakeDeferred: CompletableDeferred<Boolean>? = null
 
     private val messageListener = OnMessageReceivedListener { _, bytes ->
-        try {
-            var text = bytes.decodeToString().trim()
-            while (text.startsWith("\"") && text.endsWith("\"")) {
-                text = JSONTokener(text).nextValue().toString()
-            }
-
-            val packet = JSONObject(text)
-            when (packet.optString("tag")) {
-                "mouse" -> {
-                    when (packet.optString("act")) {
-                        "m" -> {
-                            val dx = packet.optInt("dx", 0)
-                            val dy = packet.optInt("dy", 0)
-                            MouseAccessibilityService.instance?.moveCursor(dx, dy)
-                        }
-                        "tap" -> {
-                            MouseAccessibilityService.instance?.performClick()
-                        }
-                        "s" -> {
-                            val dx = packet.optInt("dx", 0)
-                            val dy = packet.optInt("dy", 0)
-                            MouseAccessibilityService.instance?.performScroll(dx, dy)
-                        }
-                        "back" -> {
-                            MouseAccessibilityService.instance?.performBack()
-                        }
-                        "home" -> {
-                            MouseAccessibilityService.instance?.performHome()
-                        }
-                        "recents" -> {
-                            MouseAccessibilityService.instance?.performRecents()
-                        }
-                        "stealth" -> {
-                            MouseAccessibilityService.instance?.toggleStealthMode()
-                        }
-                        "ping" -> {
-                            MouseAccessibilityService.instance?.onWatchHeartbeat()
-                        }
-                        "state" -> {
-                            val isOpen = packet.optBoolean("open", false)
-                            MouseAccessibilityService.instance?.onWatchStateChanged(isOpen)
-                        }
-                    }
+        when (val cmd = MouseEngine.parseWatchPacket(bytes.decodeToString())) {
+            is WatchCommand.Move -> MouseAccessibilityService.instance?.moveCursor(cmd.dx, cmd.dy)
+            is WatchCommand.ScrollMove -> MouseAccessibilityService.instance?.performScrollMove(cmd.dx, cmd.dy)
+            is WatchCommand.ScrollEnd -> MouseAccessibilityService.instance?.performScrollEnd()
+            is WatchCommand.Tap -> MouseAccessibilityService.instance?.performClick()
+            is WatchCommand.Back -> MouseAccessibilityService.instance?.performBack()
+            is WatchCommand.Home -> MouseAccessibilityService.instance?.performHome()
+            is WatchCommand.Recents -> MouseAccessibilityService.instance?.performRecents()
+            is WatchCommand.Stealth -> MouseAccessibilityService.instance?.toggleStealthMode()
+            is WatchCommand.Ping -> MouseAccessibilityService.instance?.onWatchHeartbeat()
+            is WatchCommand.State -> MouseAccessibilityService.instance?.onWatchStateChanged(cmd.open)
+            is WatchCommand.Handshake -> {
+                if (cmd.step > 0) {
+                    handshakeDeferred?.complete(true)
+                    MouseAccessibilityService.instance?.onWatchStateChanged(true)
                 }
-                "handshake" -> {
-                    val step = packet.optInt("step", 0)
-                    if (step > 0) {
-                        handshakeDeferred?.complete(true)
-                        MouseAccessibilityService.instance?.onWatchStateChanged(true)
-                    }
-                    if (step < 2) {
-                        val reply = JSONObject().put("tag", "handshake").put("step", step + 1).toString()
-                        activeNode?.let { messageApi.sendMessage(it.id, reply.toByteArray(Charsets.UTF_8)) }
-                    }
+                if (cmd.step < 2) {
+                    val reply = JSONObject().put("tag", "handshake").put("step", cmd.step + 1).toString()
+                    activeNode?.let { messageApi.sendMessage(it.id, reply.toByteArray(Charsets.UTF_8)) }
                 }
             }
-        } catch (_: Exception) {}
+            is WatchCommand.Unknown -> {}
+        }
     }
 
     fun ensureListening() {
