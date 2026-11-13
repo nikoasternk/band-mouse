@@ -37,6 +37,10 @@ jobs:
           mkdir -p watch/src/common
           rsvg-convert -w 192 -h 192 watch/src/common/icon.svg -o watch/src/common/logo.png
 
+      - name: Run Watch Automated Verification Suite
+        run: |
+          node watch/test/verify-watch.mjs
+
       - name: Prepare Persistent Unified Signing Keys
         run: |
           mkdir -p keys watch/sign watch/sign/debug watch/sign/release
@@ -69,6 +73,11 @@ jobs:
           mkdir -p ../dist
           cp dist/*.rpk ../dist/bandmouse-watch.rpk
 
+      - name: Run Android Automated Unit Tests
+        run: |
+          cd phone
+          gradle testReleaseUnitTest --info --stacktrace
+
       - name: Build Android APK
         run: |
           cd phone
@@ -81,7 +90,7 @@ jobs:
         with:
           tag_name: "v1.0.${{ github.run_number }}"
           name: "Band Mouse v1.0.${{ github.run_number }}"
-          body: "Manual build #${{ github.run_number }}."
+          body: "Manual verified build #${{ github.run_number }}."
           files: |
             dist/bandmouse-watch.rpk
             dist/bandmouse-phone.apk
