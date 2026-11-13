@@ -24,6 +24,21 @@ class BandMouseUnitTest {
     }
 
     @Test
+    fun testCursorAndScrollSpeedsAreIdenticalAtSameDpi() {
+        val dpi = 1200
+        val cursorNext = MouseEngine.computeLinearCursorTarget(500f, 500f, 10, -15, dpi, 1080, 2400)
+        val cursorDx = cursorNext.first - 500f
+        val cursorDy = cursorNext.second - 500f
+
+        val scrollDelta = MouseEngine.computeScrollDelta(10, -15, dpi)
+        assertEquals(cursorDx, scrollDelta.first, 0.001f)
+        assertEquals(cursorDy, scrollDelta.second, 0.001f)
+        assertEquals(30.0f, cursorDx, 0.001f)
+        assertEquals(-45.0f, cursorDy, 0.001f)
+        println("[TEST-LOG] Identical 1200 DPI displacement verified: cursor=($cursorDx,$cursorDy), scroll=$scrollDelta")
+    }
+
+    @Test
     fun testOneEuroFilterAndConstantRateInterpolator() {
         val fx = OneEuroFilter()
         val fy = OneEuroFilter()
@@ -40,14 +55,13 @@ class BandMouseUnitTest {
         }
         assertEquals(targetX, curX, 0.5f)
         assertEquals(targetY, curY, 0.5f)
-        println("[TEST-LOG] 1-Euro Filter converged to ($curX, $curY)")
     }
 
     @Test
     fun testLinearCursorHasZeroAccelerationAndClampsBounds() {
-        val slowStep1 = MouseEngine.computeLinearCursorTarget(500f, 500f, 2, -3, 3.0f, 1080, 2400)
-        val slowStep2 = MouseEngine.computeLinearCursorTarget(slowStep1.first, slowStep1.second, 2, -3, 3.0f, 1080, 2400)
-        val fastSingleStep = MouseEngine.computeLinearCursorTarget(500f, 500f, 4, -6, 3.0f, 1080, 2400)
+        val slowStep1 = MouseEngine.computeLinearCursorTarget(500f, 500f, 2, -3, 1200, 1080, 2400)
+        val slowStep2 = MouseEngine.computeLinearCursorTarget(slowStep1.first, slowStep1.second, 2, -3, 1200, 1080, 2400)
+        val fastSingleStep = MouseEngine.computeLinearCursorTarget(500f, 500f, 4, -6, 1200, 1080, 2400)
         assertEquals(fastSingleStep.first, slowStep2.first, 0.001f)
         assertEquals(fastSingleStep.second, slowStep2.second, 0.001f)
     }
@@ -67,11 +81,11 @@ class BandMouseUnitTest {
 
     @Test
     fun testFourWayHybridScrollFromCursorPosition() {
-        val vertDelta = MouseEngine.computeFourWayScrollDelta(3, -12, 8.0f)
+        val vertDelta = MouseEngine.computeFourWayScrollDelta(3, -12, 1200)
         assertEquals(0f, vertDelta.first, 0.001f)
         assertNotEquals(0f, vertDelta.second, 0.001f)
 
-        val horizDelta = MouseEngine.computeFourWayScrollDelta(15, 4, 8.0f)
+        val horizDelta = MouseEngine.computeFourWayScrollDelta(15, 4, 1200)
         assertNotEquals(0f, horizDelta.first, 0.001f)
         assertEquals(0f, horizDelta.second, 0.001f)
 
@@ -83,12 +97,12 @@ class BandMouseUnitTest {
     }
 
     @Test
-    fun testWatchPacketProtocolParsingWithMode() {
-        val scrollStartCmd = MouseEngine.parseWatchPacket("""{"tag":"mouse","act":"s_start","drag":true,"mode":"hybrid"}""")
-        assertEquals(WatchCommand.ScrollStart(true, "hybrid"), scrollStartCmd)
+    fun testWatchPacketProtocolParsingIncludingPhoneBrightness() {
+        val brightCmd = MouseEngine.parseWatchPacket("""{"tag":"mouse","act":"p_bright","on":true,"pct":30}""")
+        assertEquals(WatchCommand.PhoneBrightness(true, 30), brightCmd)
 
-        val scrollMoveCmd = MouseEngine.parseWatchPacket("""{"tag":"mouse","act":"s_move","dx":-5,"dy":12,"drag":false,"mode":"scroll"}""")
-        assertEquals(WatchCommand.ScrollMove(-5, 12, false, "scroll"), scrollMoveCmd)
+        val stateCmd = MouseEngine.parseWatchPacket("""{"tag":"mouse","act":"state","open":true,"mode":"hybrid","drag":true,"brightOn":true,"brightPct":70}""")
+        assertEquals(WatchCommand.State(true, "hybrid", true, true, 70), stateCmd)
 
         val modeCfgCmd = MouseEngine.parseWatchPacket("""{"tag":"mouse","act":"s_mode","drag":false,"mode":"scroll"}""")
         assertEquals(WatchCommand.ScrollModeConfig(false, "scroll"), modeCfgCmd)
