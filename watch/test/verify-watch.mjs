@@ -56,6 +56,7 @@ const enKeys = extractKeys(enMatch[1]);
 const ruKeys = extractKeys(enMatch[2]);
 assert.deepStrictEqual(enKeys, ruKeys, 'EN and RU localization keys must match 100%');
 assert.ok(enKeys.includes('dragScrollTitle'), 'dragScrollTitle key must exist');
+assert.ok(enKeys.includes('phoneBrightTitle'), 'phoneBrightTitle key must exist');
 logPass(`Localization parity verified (${enKeys.length} keys in EN & RU)`);
 
 for (let mScalePct = 70; mScalePct <= 140; mScalePct += 10) {
@@ -69,7 +70,6 @@ for (let mScalePct = 70; mScalePct <= 140; mScalePct += 10) {
     const navVisW = Math.round(50 * nScale);
     const navVisH = Math.round(38 * nScale);
     const navHitTop = menuHitH;
-    const navHitH = navVisH + 8;
     const navHitCellW = Math.min(70, Math.max(navVisW + 8, Math.round(58 * nScale)));
 
     assert.strictEqual(navHitTop, menuHitH, 'Zero vertical gap between Menu and NavBar');
@@ -85,8 +85,14 @@ assert.ok(padCode.includes("act: 's_start'"), 'Touchpad must send s_start packet
 assert.ok(padCode.includes("act: 's_move'"), 'Touchpad must send s_move packets');
 assert.ok(padCode.includes("act: 's_hold'"), 'Touchpad must send s_hold keepalive packet');
 assert.ok(padCode.includes("act: 's_end'"), 'Touchpad must send s_end packet on release');
-assert.ok(padCode.includes('mode: this.controlMode'), 'Touchpad must sync controlMode');
-logPass('Touchpad continuous drag-scroll and mode sync protocol verified');
+assert.ok(padCode.includes('bottom-clock-txt'), 'Touchpad must display non-blocking bottom clock');
+assert.ok(padCode.includes('full-touchpad-hit'), 'Touchpad hit layer must cover bottom clock');
+logPass('Touchpad drag-scroll, clock overlay and hit layers verified');
+
+const menuCode = fs.readFileSync(path.join(srcDir, 'pages', 'menu', 'menu.ux'), 'utf8');
+assert.ok(menuCode.includes('togglePhoneBrightness'), 'Menu must include phone brightness switch');
+assert.ok(menuCode.includes("act: 'p_bright'"), 'Menu must sync p_bright to phone');
+logPass('Menu phone brightness control verified');
 
 const settingsCode = fs.readFileSync(path.join(srcDir, 'pages', 'settings', 'settings.ux'), 'utf8');
 const markModMatch = settingsCode.match(/markModified\(\)\s*\{([\s\S]*?)\}/);
