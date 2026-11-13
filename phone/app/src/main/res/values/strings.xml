@@ -16,6 +16,6 @@
     <string name="btn_launch_watch">Connect &amp; Open Touchpad on Watch</string>
     <string name="label_cursor_dpi">Cursor Sensitivity: %1$d DPI</string>
     <string name="label_scroll_dpi">Scroll Sensitivity: %1$d DPI</string>
-    <string name="btn_reset_dpi">Reset Defaults (1200 / 1200 DPI)</string>
+    <string name="btn_reset_dpi">Reset Defaults (1000 / 1000 DPI)</string>
     <string name="toast_ready">Touchpad active on Band 10!</string>
 </resources>
