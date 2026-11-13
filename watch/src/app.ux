@@ -7,7 +7,6 @@ import device from '@system.device'
 import { pctToHardwareBrightness } from './services/Localization'
 
 globalThis.wearableBridge = new WearableBridge();
-
 globalThis.watchTouchPpi = 326;
 
 globalThis.detectWatchPpi = () => {
