@@ -16,6 +16,6 @@
     <string name="btn_launch_watch">Подключить и открыть тачпад</string>
     <string name="label_cursor_dpi">Скорость курсора: %1$d DPI</string>
     <string name="label_scroll_dpi">Скорость скролла: %1$d DPI</string>
-    <string name="btn_reset_dpi">Сбросить (1200 / 1200 DPI)</string>
+    <string name="btn_reset_dpi">Сбросить (1000 / 1000 DPI)</string>
     <string name="toast_ready">Тачпад запущен на Band 10!</string>
 </resources>
