@@ -127,7 +127,8 @@ export default {
               act: 's_move',
               dx: dx,
               dy: dy,
-              drag: this.dragScroll
+              drag: this.dragScroll,
+              mode: this.controlMode
             });
           } else {
             globalThis.wearableBridge.sendPacket({
@@ -140,13 +141,14 @@ export default {
         }
       } else if (this.scrollStreaming && this.activeGestureMode === 'scroll') {
         this.idleHoldTicks += 1;
-        if (this.idleHoldTicks >= 9) {
+        if (this.idleHoldTicks >= 6) {
           this.idleHoldTicks = 0;
           if (globalThis.wearableBridge) {
             globalThis.wearableBridge.sendPacket({
               tag: 'mouse',
               act: 's_hold',
-              drag: this.dragScroll
+              drag: this.dragScroll,
+              mode: this.controlMode
             });
           }
         }
@@ -166,6 +168,14 @@ export default {
       this.stealthOnSquare = cfg.stealthOnSquare !== false;
       this.stealthHoldSec = cfg.stealthHoldSec || 3;
       this.computeLayoutMetrics(cfg.menuBtnScale || 100, cfg.navBarScale || 100);
+      if (globalThis.wearableBridge) {
+        globalThis.wearableBridge.sendPacket({
+          tag: 'mouse',
+          act: 's_mode',
+          drag: this.dragScroll,
+          mode: this.controlMode
+        });
+      }
     });
   },
 
@@ -226,7 +236,8 @@ export default {
       globalThis.wearableBridge.sendPacket({
         tag: 'mouse',
         act: 's_start',
-        drag: this.dragScroll
+        drag: this.dragScroll,
+        mode: this.controlMode
       });
     }
   },
@@ -335,7 +346,8 @@ export default {
           act: 's_move',
           dx: remX,
           dy: remY,
-          drag: this.dragScroll
+          drag: this.dragScroll,
+          mode: this.controlMode
         });
       }
       this.finishScrollStreamIfNeeded();
