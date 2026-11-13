@@ -69,9 +69,11 @@ export default {
   private: {
     strings: getStrings('auto'),
     controlMode: 'cursor',
+    dragScroll: true,
     activeGestureMode: 'cursor',
     hybridPending: false,
     scrollStreaming: false,
+    idleHoldTicks: 0,
     tapLockPx: 4,
     hybridHoldMs: 400,
     showNavBar: true,
@@ -109,14 +111,13 @@ export default {
 
   onInit() {
     this.flushTimer = setInterval(() => {
-      if (this.bucketX === 0 && this.bucketY === 0) return;
-
       const dx = Math.round(this.bucketX);
       const dy = Math.round(this.bucketY);
 
       if (dx !== 0 || dy !== 0) {
         this.bucketX -= dx;
         this.bucketY -= dy;
+        this.idleHoldTicks = 0;
 
         if (globalThis.wearableBridge) {
           if (this.activeGestureMode === 'scroll') {
@@ -125,7 +126,8 @@ export default {
               tag: 'mouse',
               act: 's_move',
               dx: dx,
-              dy: dy
+              dy: dy,
+              drag: this.dragScroll
             });
           } else {
             globalThis.wearableBridge.sendPacket({
@@ -133,6 +135,18 @@ export default {
               act: 'm',
               dx: dx,
               dy: dy
+            });
+          }
+        }
+      } else if (this.scrollStreaming && this.activeGestureMode === 'scroll') {
+        this.idleHoldTicks += 1;
+        if (this.idleHoldTicks >= 9) {
+          this.idleHoldTicks = 0;
+          if (globalThis.wearableBridge) {
+            globalThis.wearableBridge.sendPacket({
+              tag: 'mouse',
+              act: 's_hold',
+              drag: this.dragScroll
             });
           }
         }
@@ -145,6 +159,7 @@ export default {
     globalThis.loadMouseConfig((cfg) => {
       this.strings = getStrings(cfg.language || 'auto');
       this.controlMode = cfg.controlMode || 'cursor';
+      this.dragScroll = cfg.dragScroll !== false;
       this.tapLockPx = cfg.tapLockPx !== undefined ? cfg.tapLockPx : 4;
       this.hybridHoldMs = cfg.hybridHoldMs || 400;
       this.showNavBar = cfg.showNavBar !== false;
@@ -204,9 +219,22 @@ export default {
     return { x, y };
   },
 
+  startScrollStream() {
+    this.scrollStreaming = true;
+    this.idleHoldTicks = 0;
+    if (globalThis.wearableBridge) {
+      globalThis.wearableBridge.sendPacket({
+        tag: 'mouse',
+        act: 's_start',
+        drag: this.dragScroll
+      });
+    }
+  },
+
   finishScrollStreamIfNeeded() {
     if (this.scrollStreaming) {
       this.scrollStreaming = false;
+      this.idleHoldTicks = 0;
       if (globalThis.wearableBridge) {
         globalThis.wearableBridge.sendPacket({
           tag: 'mouse',
@@ -228,12 +256,14 @@ export default {
     this.bucketX = 0;
     this.bucketY = 0;
     this.scrollStreaming = false;
+    this.idleHoldTicks = 0;
     this.clearHybridTimer();
 
     if (this.controlMode === 'scroll') {
       this.activeGestureMode = 'scroll';
       this.hybridPending = false;
       this.isMoveUnlocked = true;
+      this.startScrollStream();
     } else if (this.controlMode === 'hybrid') {
       this.activeGestureMode = 'cursor';
       this.hybridPending = true;
@@ -247,6 +277,7 @@ export default {
           this.bucketX = 0;
           this.bucketY = 0;
           globalThis.triggerHaptic('soft');
+          this.startScrollStream();
         }
       }, this.hybridHoldMs);
     } else {
@@ -303,7 +334,8 @@ export default {
           tag: 'mouse',
           act: 's_move',
           dx: remX,
-          dy: remY
+          dy: remY,
+          drag: this.dragScroll
         });
       }
       this.finishScrollStreamIfNeeded();
