@@ -42,8 +42,10 @@ android {
         unitTests.isReturnDefaultValues = true
         unitTests.all {
             it.testLogging {
-                events(TestLogEvent.PASSED, TestLogEvent.SKIPPED, TestLogEvent.FAILED, TestLogEvent.STANDARD_OUT, TestLogEvent.STANDARD_ERROR)
-                exceptionFormat = TestExceptionFormat.FULL
+                events(TestLogEvent.FAILED, TestLogEvent.STANDARD_OUT)
+                exceptionFormat = TestExceptionFormat.SHORT
+                showStackTraces = false
+                showCauses = true
                 showStandardStreams = true
             }
         }
