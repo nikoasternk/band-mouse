@@ -22,8 +22,11 @@ data class DragStepResult(
 
 sealed class WatchCommand {
     data class Move(val dx: Int, val dy: Int) : WatchCommand()
-    data class ScrollMove(val dx: Int, val dy: Int) : WatchCommand()
+    data class ScrollStart(val dragCursor: Boolean?) : WatchCommand()
+    data class ScrollMove(val dx: Int, val dy: Int, val dragCursor: Boolean?) : WatchCommand()
+    data class ScrollHold(val dragCursor: Boolean?) : WatchCommand()
     data object ScrollEnd : WatchCommand()
+    data class ScrollModeConfig(val dragCursor: Boolean) : WatchCommand()
     data object Tap : WatchCommand()
     data object Back : WatchCommand()
     data object Home : WatchCommand()
@@ -66,6 +69,23 @@ object MouseEngine {
     fun computeScrollDelta(dx: Int, dy: Int, scrollMultiplier: Float): Pair<Float, Float> {
         val dragScale = scrollMultiplier * 0.55f
         return Pair(dx * dragScale, dy * dragScale)
+    }
+
+    fun computeRealCursorDragStep(
+        curX: Float,
+        curY: Float,
+        stepX: Float,
+        stepY: Float,
+        screenWidth: Int,
+        screenHeight: Int
+    ): DragStepResult {
+        val w = screenWidth.coerceAtLeast(10)
+        val h = screenHeight.coerceAtLeast(10)
+        val clampedStartX = curX.coerceIn(2f, (w - 3).toFloat())
+        val clampedStartY = curY.coerceIn(2f, (h - 3).toFloat())
+        val nextX = (clampedStartX + stepX).coerceIn(2f, (w - 3).toFloat())
+        val nextY = (clampedStartY + stepY).coerceIn(2f, (h - 3).toFloat())
+        return DragStepResult(clampedStartX, clampedStartY, nextX, nextY, false)
     }
 
     fun computeInitialScrollStep(
@@ -121,12 +141,16 @@ object MouseEngine {
                 text = JSONTokener(text).nextValue().toString()
             }
             val packet = JSONObject(text)
+            val dragOpt = if (packet.has("drag")) packet.optBoolean("drag", true) else null
             return when (packet.optString("tag")) {
                 "mouse" -> {
                     when (packet.optString("act")) {
                         "m" -> WatchCommand.Move(packet.optInt("dx", 0), packet.optInt("dy", 0))
-                        "s_move", "s" -> WatchCommand.ScrollMove(packet.optInt("dx", 0), packet.optInt("dy", 0))
+                        "s_start" -> WatchCommand.ScrollStart(dragOpt)
+                        "s_move", "s" -> WatchCommand.ScrollMove(packet.optInt("dx", 0), packet.optInt("dy", 0), dragOpt)
+                        "s_hold" -> WatchCommand.ScrollHold(dragOpt)
                         "s_end" -> WatchCommand.ScrollEnd
+                        "s_mode" -> WatchCommand.ScrollModeConfig(packet.optBoolean("drag", true))
                         "tap" -> WatchCommand.Tap
                         "back" -> WatchCommand.Back
                         "home" -> WatchCommand.Home
