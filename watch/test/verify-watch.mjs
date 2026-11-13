@@ -40,7 +40,10 @@ assert.strictEqual(manifest.router.entry, 'pages/touchpad');
 assert.ok(manifest.router.pages['pages/touchpad']);
 assert.ok(manifest.router.pages['pages/menu']);
 assert.ok(manifest.router.pages['pages/settings']);
-logPass('manifest.json structure and routes verified');
+assert.ok(manifest.features.some(f => f.name === 'system.device'), 'manifest.json must declare system.device');
+const appUxCode = fs.readFileSync(path.join(srcDir, 'app.ux'), 'utf8');
+assert.ok(appUxCode.includes('detectWatchPpi') && appUxCode.includes('watchTouchPpi'), 'app.ux must auto-detect watchTouchPpi');
+logPass('manifest.json structure, routes and auto-PPI detection verified');
 
 const logoPath = path.join(srcDir, 'common', 'logo.png');
 const svgPath = path.join(srcDir, 'common', 'icon.svg');
