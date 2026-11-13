@@ -43,8 +43,11 @@ class WearableMouseClient private constructor(context: Context) {
     private val messageListener = OnMessageReceivedListener { _, bytes ->
         when (val cmd = MouseEngine.parseWatchPacket(bytes.decodeToString())) {
             is WatchCommand.Move -> MouseAccessibilityService.instance?.moveCursor(cmd.dx, cmd.dy)
-            is WatchCommand.ScrollMove -> MouseAccessibilityService.instance?.performScrollMove(cmd.dx, cmd.dy)
+            is WatchCommand.ScrollStart -> MouseAccessibilityService.instance?.performScrollStart(cmd.dragCursor)
+            is WatchCommand.ScrollMove -> MouseAccessibilityService.instance?.performScrollMove(cmd.dx, cmd.dy, cmd.dragCursor)
+            is WatchCommand.ScrollHold -> MouseAccessibilityService.instance?.performScrollHold(cmd.dragCursor)
             is WatchCommand.ScrollEnd -> MouseAccessibilityService.instance?.performScrollEnd()
+            is WatchCommand.ScrollModeConfig -> MouseAccessibilityService.instance?.setDragScrollMode(cmd.dragCursor)
             is WatchCommand.Tap -> MouseAccessibilityService.instance?.performClick()
             is WatchCommand.Back -> MouseAccessibilityService.instance?.performBack()
             is WatchCommand.Home -> MouseAccessibilityService.instance?.performHome()
