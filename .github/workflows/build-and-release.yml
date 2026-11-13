@@ -33,7 +33,7 @@ jobs:
 
       - name: Render Watch Icon from Vector SVG
         run: |
-          sudo apt-get update && sudo apt-get install -y librsvg2-bin
+          sudo apt-get update -qq && sudo apt-get install -y -qq librsvg2-bin
           mkdir -p watch/src/common
           rsvg-convert -w 192 -h 192 watch/src/common/icon.svg -o watch/src/common/logo.png
 
@@ -68,7 +68,7 @@ jobs:
       - name: Build Watch RPK
         run: |
           cd watch
-          npm install
+          npm install --silent
           npx aiot release --enable-custom-component --enable-jsc
           mkdir -p ../dist
           cp dist/*.rpk ../dist/bandmouse-watch.rpk
@@ -76,12 +76,12 @@ jobs:
       - name: Run Android Automated Unit Tests
         run: |
           cd phone
-          gradle testReleaseUnitTest --info --stacktrace
+          gradle testReleaseUnitTest -q --console=plain
 
       - name: Build Android APK
         run: |
           cd phone
-          gradle assembleRelease
+          gradle assembleRelease -q --console=plain
           mkdir -p ../dist
           cp app/build/outputs/apk/release/app-release.apk ../dist/bandmouse-phone.apk
 
