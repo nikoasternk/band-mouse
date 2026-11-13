@@ -2,9 +2,9 @@ package com.band.mouse
 
 import org.json.JSONObject
 import org.json.JSONTokener
+import kotlin.math. PI
 import kotlin.math.abs
 import kotlin.math.hypot
-import kotlin.math.sign
 
 data class OverlayBounds(
     val width: Int,
@@ -20,6 +20,44 @@ data class DragStepResult(
     val endY: Float,
     val needsRecycle: Boolean
 )
+
+class OneEuroFilter(
+    private val minCutoff: Float = 3.2f,
+    private val beta: Float = 0.045f,
+    private val dCutoff: Float = 1.0f
+) {
+    private var xPrev = Float.NaN
+    private var dxPrev = 0f
+
+    fun reset(initialValue: Float) {
+        xPrev = initialValue
+        dxPrev = 0f
+    }
+
+    private fun smoothingFactor(dt: Float, cutoff: Float): Float {
+        val r = (2.0 * PI * cutoff * dt).toFloat()
+        return r / (r + 1.0f)
+    }
+
+    fun filter(value: Float, dtSeconds: Float): Float {
+        val dt = dtSeconds.coerceIn(0.002f, 0.050f)
+        if (xPrev.isNaN()) {
+            xPrev = value
+            dxPrev = 0f
+            return value
+        }
+        val dValue = (value - xPrev) / dt
+        val alphaD = smoothingFactor(dt, dCutoff)
+        val edValue = alphaD * dValue + (1.0f - alphaD) * dxPrev
+        dxPrev = edValue
+
+        val cutoff = minCutoff + beta * abs(edValue)
+        val alpha = smoothingFactor(dt, cutoff)
+        val result = alpha * value + (1.0f - alpha) * xPrev
+        xPrev = result
+        return result
+    }
+}
 
 sealed class WatchCommand {
     data class Move(val dx: Int, val dy: Int) : WatchCommand()
@@ -65,6 +103,33 @@ object MouseEngine {
         val nx = (currentTargetX + dx * sensitivity).coerceIn(0f, (w - 1).toFloat())
         val ny = (currentTargetY + dy * sensitivity).coerceIn(0f, (h - 1).toFloat())
         return Pair(nx, ny)
+    }
+
+    fun stepCursorConstantRate(
+        currentX: Float,
+        currentY: Float,
+        targetX: Float,
+        targetY: Float,
+        dtSeconds: Float,
+        filterX: OneEuroFilter,
+        filterY: OneEuroFilter
+    ): Pair<Float, Float> {
+        val dt = dtSeconds.coerceIn(0.004f, 0.033f)
+        val diffX = targetX - currentX
+        val diffY = targetY - currentY
+        val dist = hypot(diffX, diffY)
+        if (dist < 0.15f) {
+            filterX.reset(targetX)
+            filterY.reset(targetY)
+            return Pair(targetX, targetY)
+        }
+        val packetWindowSec = 0.020f
+        val linearAlpha = (dt / packetWindowSec).coerceIn(0.25f, 0.85f)
+        val steppedX = currentX + diffX * linearAlpha
+        val steppedY = currentY + diffY * linearAlpha
+        val smoothX = filterX.filter(steppedX, dt)
+        val smoothY = filterY.filter(steppedY, dt)
+        return Pair(smoothX, smoothY)
     }
 
     fun computeScrollDelta(dx: Int, dy: Int, scrollMultiplier: Float): Pair<Float, Float> {
