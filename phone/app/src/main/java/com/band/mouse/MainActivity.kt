@@ -41,7 +41,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import com.band.mouse.service.MouseAccessibilityService
 import com.band.mouse.transport.WearableMouseClient
 import java.util.Locale
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
 
@@ -63,9 +64,8 @@ class MainActivity : ComponentActivity() {
     private var isAccessibilityGranted by mutableStateOf(false)
     private var isWriteSettingsGranted by mutableStateOf(false)
     private var isMasterServiceEnabled by mutableStateOf(true)
-    private var isDragScrollEnabled by mutableStateOf(true)
-    private var sensitivity by mutableFloatStateOf(3.0f)
-    private var scrollSpeed by mutableFloatStateOf(8.0f)
+    private var cursorDpi by mutableIntStateOf(MouseEngine.DEFAULT_DPI)
+    private var scrollDpi by mutableIntStateOf(MouseEngine.DEFAULT_DPI)
     private var languageMode by mutableStateOf("auto")
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -74,15 +74,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences("bandmouse_prefs", Context.MODE_PRIVATE)
         languageMode = prefs.getString("lang_mode", "auto") ?: "auto"
-        sensitivity = prefs.getFloat("sensitivity", 3.0f)
-        scrollSpeed = prefs.getFloat("scroll_mult", 8.0f)
+        cursorDpi = prefs.getInt("cursor_dpi", MouseEngine.DEFAULT_DPI).coerceIn(200, 3200)
+        scrollDpi = prefs.getInt("scroll_dpi", MouseEngine.DEFAULT_DPI).coerceIn(200, 3200)
         isMasterServiceEnabled = prefs.getBoolean("master_enabled", true)
-        isDragScrollEnabled = prefs.getBoolean("drag_scroll", true)
 
-        MouseAccessibilityService.cursorSensitivity = sensitivity
-        MouseAccessibilityService.scrollMultiplier = scrollSpeed
+        MouseAccessibilityService.cursorDpi = cursorDpi
+        MouseAccessibilityService.scrollDpi = scrollDpi
         MouseAccessibilityService.isServiceMasterEnabled = isMasterServiceEnabled
-        MouseAccessibilityService.isDragScrollEnabled = isDragScrollEnabled
 
         mouseClient = WearableMouseClient.getInstance(this)
         startWatchSession()
@@ -123,20 +121,13 @@ class MainActivity : ComponentActivity() {
                             isAccessibilityGranted = isAccessibilityGranted,
                             isWriteSettingsGranted = isWriteSettingsGranted,
                             isMasterEnabled = isMasterServiceEnabled,
-                            isDragScroll = isDragScrollEnabled,
-                            sensitivity = sensitivity,
-                            scrollSpeed = scrollSpeed,
+                            cursorDpi = cursorDpi,
+                            scrollDpi = scrollDpi,
                             onMasterToggle = { enabled ->
                                 isMasterServiceEnabled = enabled
                                 prefs.edit().putBoolean("master_enabled", enabled).apply()
                                 MouseAccessibilityService.instance?.setMasterEnabled(enabled)
                                 MouseAccessibilityService.isServiceMasterEnabled = enabled
-                            },
-                            onDragScrollToggle = { enabled ->
-                                isDragScrollEnabled = enabled
-                                prefs.edit().putBoolean("drag_scroll", enabled).apply()
-                                MouseAccessibilityService.instance?.setDragScrollMode(enabled)
-                                MouseAccessibilityService.isDragScrollEnabled = enabled
                             },
                             onConnectWatch = { startWatchSession() },
                             onOpenAccessibility = {
@@ -149,24 +140,26 @@ class MainActivity : ComponentActivity() {
                                 )
                                 startActivity(intent)
                             },
-                            onSensitivityChange = { value ->
-                                sensitivity = value
-                                MouseAccessibilityService.cursorSensitivity = value
-                                prefs.edit().putFloat("sensitivity", value).apply()
+                            onCursorDpiChange = { value ->
+                                val clamped = value.coerceIn(200, 3200)
+                                cursorDpi = clamped
+                                MouseAccessibilityService.cursorDpi = clamped
+                                prefs.edit().putInt("cursor_dpi", clamped).apply()
                             },
-                            onScrollSpeedChange = { value ->
-                                scrollSpeed = value
-                                MouseAccessibilityService.scrollMultiplier = value
-                                prefs.edit().putFloat("scroll_mult", value).apply()
+                            onScrollDpiChange = { value ->
+                                val clamped = value.coerceIn(200, 3200)
+                                scrollDpi = clamped
+                                MouseAccessibilityService.scrollDpi = clamped
+                                prefs.edit().putInt("scroll_dpi", clamped).apply()
                             },
-                            onResetSpeeds = {
-                                sensitivity = 3.0f
-                                scrollSpeed = 8.0f
-                                MouseAccessibilityService.cursorSensitivity = 3.0f
-                                MouseAccessibilityService.scrollMultiplier = 8.0f
+                            onResetDpi = {
+                                cursorDpi = MouseEngine.DEFAULT_DPI
+                                scrollDpi = MouseEngine.DEFAULT_DPI
+                                MouseAccessibilityService.cursorDpi = MouseEngine.DEFAULT_DPI
+                                MouseAccessibilityService.scrollDpi = MouseEngine.DEFAULT_DPI
                                 prefs.edit()
-                                    .putFloat("sensitivity", 3.0f)
-                                    .putFloat("scroll_mult", 8.0f)
+                                    .putInt("cursor_dpi", MouseEngine.DEFAULT_DPI)
+                                    .putInt("scroll_dpi", MouseEngine.DEFAULT_DPI)
                                     .apply()
                             }
                         )
@@ -180,7 +173,6 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         isAccessibilityGranted = MouseAccessibilityService.instance != null
         isWriteSettingsGranted = Settings.System.canWrite(this)
-        isDragScrollEnabled = MouseAccessibilityService.isDragScrollEnabled
         mouseClient.ensureListening()
     }
 
@@ -231,23 +223,58 @@ fun BandMouseTheme(
 }
 
 @Composable
+fun DpiControlBlock(
+    label: String,
+    dpi: Int,
+    onDpiChange: (Int) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f)
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { onDpiChange((dpi - 100).coerceIn(200, 3200)) }) {
+                Text("-100", fontWeight = FontWeight.Bold)
+            }
+            TextButton(onClick = { onDpiChange((dpi + 100).coerceIn(200, 3200)) }) {
+                Text("+100", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+    Slider(
+        value = dpi.toFloat(),
+        onValueChange = { raw ->
+            val snapped = ((raw / 100f).roundToInt() * 100).coerceIn(200, 3200)
+            onDpiChange(snapped)
+        },
+        valueRange = 200f..3200f,
+        steps = 29
+    )
+}
+
+@Composable
 fun MouseControlScreen(
     modifier: Modifier = Modifier,
     bandStatus: String,
     isAccessibilityGranted: Boolean,
     isWriteSettingsGranted: Boolean,
     isMasterEnabled: Boolean,
-    isDragScroll: Boolean,
-    sensitivity: Float,
-    scrollSpeed: Float,
+    cursorDpi: Int,
+    scrollDpi: Int,
     onMasterToggle: (Boolean) -> Unit,
-    onDragScrollToggle: (Boolean) -> Unit,
     onConnectWatch: () -> Unit,
     onOpenAccessibility: () -> Unit,
     onOpenWriteSettings: () -> Unit,
-    onSensitivityChange: (Float) -> Unit,
-    onScrollSpeedChange: (Float) -> Unit,
-    onResetSpeeds: () -> Unit
+    onCursorDpiChange: (Int) -> Unit,
+    onScrollDpiChange: (Int) -> Unit,
+    onResetDpi: () -> Unit
 ) {
     Column(
         modifier = modifier
@@ -341,54 +368,27 @@ fun MouseControlScreen(
                 modifier = Modifier
                     .padding(16.dp)
                     .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.drag_scroll_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        Text(stringResource(R.string.drag_scroll_sub), style = MaterialTheme.typography.bodySmall)
-                    }
-                    Switch(
-                        checked = isDragScroll,
-                        onCheckedChange = onDragScrollToggle
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = stringResource(R.string.label_sensitivity, String.format(Locale.US, "%.1f", sensitivity)),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Slider(
-                    value = sensitivity,
-                    onValueChange = onSensitivityChange,
-                    valueRange = 0.8f..6.0f
+                DpiControlBlock(
+                    label = stringResource(R.string.label_cursor_dpi, cursorDpi),
+                    dpi = cursorDpi,
+                    onDpiChange = onCursorDpiChange
                 )
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
-                Text(
-                    text = stringResource(R.string.label_scroll_speed, String.format(Locale.US, "%.1f", scrollSpeed)),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Slider(
-                    value = scrollSpeed,
-                    onValueChange = onScrollSpeedChange,
-                    valueRange = 1.5f..14.0f
+                DpiControlBlock(
+                    label = stringResource(R.string.label_scroll_dpi, scrollDpi),
+                    dpi = scrollDpi,
+                    onDpiChange = onScrollDpiChange
                 )
 
                 TextButton(
-                    onClick = onResetSpeeds,
+                    onClick = onResetDpi,
                     modifier = Modifier.align(Alignment.End)
                 ) {
-                    Text(stringResource(R.string.btn_reset_speeds))
+                    Text(stringResource(R.string.btn_reset_dpi))
                 }
             }
         }
