@@ -71,6 +71,7 @@ export default {
     controlMode: 'cursor',
     activeGestureMode: 'cursor',
     hybridPending: false,
+    scrollStreaming: false,
     tapLockPx: 4,
     hybridHoldMs: 400,
     showNavBar: true,
@@ -100,8 +101,6 @@ export default {
     isMoveUnlocked: false,
     bucketX: 0,
     bucketY: 0,
-    lastScrollDirX: 0,
-    lastScrollDirY: 0,
     flushTimer: null,
     hybridHoldTimer: null,
     squareHoldTimer: null,
@@ -112,12 +111,6 @@ export default {
     this.flushTimer = setInterval(() => {
       if (this.bucketX === 0 && this.bucketY === 0) return;
 
-      if (this.activeGestureMode === 'scroll') {
-        if (Math.abs(this.bucketX) < 2.2 && Math.abs(this.bucketY) < 2.2) {
-          return;
-        }
-      }
-
       const dx = Math.round(this.bucketX);
       const dy = Math.round(this.bucketY);
 
@@ -126,16 +119,25 @@ export default {
         this.bucketY -= dy;
 
         if (globalThis.wearableBridge) {
-          const actType = this.activeGestureMode === 'scroll' ? 's' : 'm';
-          globalThis.wearableBridge.sendPacket({
-            tag: 'mouse',
-            act: actType,
-            dx: dx,
-            dy: dy
-          });
+          if (this.activeGestureMode === 'scroll') {
+            this.scrollStreaming = true;
+            globalThis.wearableBridge.sendPacket({
+              tag: 'mouse',
+              act: 's_move',
+              dx: dx,
+              dy: dy
+            });
+          } else {
+            globalThis.wearableBridge.sendPacket({
+              tag: 'mouse',
+              act: 'm',
+              dx: dx,
+              dy: dy
+            });
+          }
         }
       }
-    }, 30);
+    }, 28);
   },
 
   onShow() {
@@ -153,12 +155,14 @@ export default {
   },
 
   onHide() {
+    this.finishScrollStreamIfNeeded();
     this.clearSquareTimer();
     this.clearHybridTimer();
     globalThis.notifyPageHidden();
   },
 
   onDestroy() {
+    this.finishScrollStreamIfNeeded();
     this.clearSquareTimer();
     this.clearHybridTimer();
     if (this.flushTimer) {
@@ -200,6 +204,18 @@ export default {
     return { x, y };
   },
 
+  finishScrollStreamIfNeeded() {
+    if (this.scrollStreaming) {
+      this.scrollStreaming = false;
+      if (globalThis.wearableBridge) {
+        globalThis.wearableBridge.sendPacket({
+          tag: 'mouse',
+          act: 's_end'
+        });
+      }
+    }
+  },
+
   onTouchStart(e) {
     const pt = this.extractPoint(e);
     if (!pt) return;
@@ -211,8 +227,7 @@ export default {
     this.totalMoved = 0;
     this.bucketX = 0;
     this.bucketY = 0;
-    this.lastScrollDirX = 0;
-    this.lastScrollDirY = 0;
+    this.scrollStreaming = false;
     this.clearHybridTimer();
 
     if (this.controlMode === 'scroll') {
@@ -231,8 +246,6 @@ export default {
           this.isMoveUnlocked = true;
           this.bucketX = 0;
           this.bucketY = 0;
-          this.lastScrollDirX = 0;
-          this.lastScrollDirY = 0;
           globalThis.triggerHaptic('soft');
         }
       }, this.hybridHoldMs);
@@ -270,16 +283,6 @@ export default {
       this.isMoveUnlocked = true;
     }
 
-    if (this.activeGestureMode === 'scroll') {
-      const dirY = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
-      if (dirY !== 0 && this.lastScrollDirY !== 0 && dirY !== this.lastScrollDirY && Math.abs(dy) < 2.2) {
-        return;
-      }
-      if (Math.abs(dy) >= 1.5) {
-        this.lastScrollDirY = dirY;
-      }
-    }
-
     this.bucketX += dx;
     this.bucketY += dy;
   },
@@ -290,8 +293,20 @@ export default {
     const elapsed = Date.now() - this.startTime;
 
     if (this.activeGestureMode === 'scroll' || this.controlMode === 'scroll') {
+      const remX = Math.round(this.bucketX);
+      const remY = Math.round(this.bucketY);
       this.bucketX = 0;
       this.bucketY = 0;
+      if ((remX !== 0 || remY !== 0) && globalThis.wearableBridge) {
+        this.scrollStreaming = true;
+        globalThis.wearableBridge.sendPacket({
+          tag: 'mouse',
+          act: 's_move',
+          dx: remX,
+          dy: remY
+        });
+      }
+      this.finishScrollStreamIfNeeded();
       return;
     }
 
@@ -313,6 +328,7 @@ export default {
     this.clearHybridTimer();
     this.bucketX = 0;
     this.bucketY = 0;
+    this.finishScrollStreamIfNeeded();
   },
 
   clearHybridTimer() {
