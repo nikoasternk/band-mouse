@@ -83,6 +83,14 @@ export default {
     }
     globalThis.mouseConfig.controlMode = this.controlMode;
     globalThis.saveMouseConfig();
+    if (globalThis.wearableBridge) {
+      globalThis.wearableBridge.sendPacket({
+        tag: 'mouse',
+        act: 's_mode',
+        drag: globalThis.mouseConfig.dragScroll !== false,
+        mode: this.controlMode
+      });
+    }
     this.updateModeLabelAndFonts();
     globalThis.triggerHaptic('soft');
   },
@@ -98,7 +106,7 @@ export default {
   },
 
   exitApplication() {
-    globalThis.triggerHaptic('short');
+    globalThis.triggerHaptic('soft');
     globalThis.forceCloseWatchApp(this.$app);
   }
 }
